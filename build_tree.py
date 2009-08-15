@@ -2,6 +2,10 @@
 
 import sys
 
+if len(sys.argv) != 4:
+    print "Usage: argv[0] <num_generations> <rule_file> <init_file>"
+    sys.exit()
+
 ## Read rule file
 if len(sys.argv) > 1:
     f = open(sys.argv[1],'r')
