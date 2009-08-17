@@ -32,15 +32,22 @@ for x in range(len(symbols)):
     symbols_inv[symbols[x]] = x
 
 ## Get rules
-rules = list()
+rule_list = []
 for x in range(len(filedata)):
     temp = filedata[x].split()
-    rules.append(list())
-    for y in temp: rules[x].append(symbols_inv[y])
+    rule_list.append(list())
+    for y in temp: rule_list[x].append(symbols_inv[y])
 
-if len(rules) == 0:
+if len(rule_list) == 0:
     print "ERROR! No rules found in file:",rules_file
     sys.exit()
+
+## Put rules in dictionary
+rules = dict()
+for x in range(len(symbols)):
+    rules[x] = list()
+    for y in rule_list: 
+        if y[0] == x: rules[x].append(y[1:len(y)])
 
 ## Read initial state file
 f = open(init_file,'r')
@@ -55,9 +62,40 @@ try:
         temp = filedata[x].split()
         for y in temp: init_states[x].append(symbols_inv[y])
 except:
-    print "ERROR! Invalid symbols in initial state file."
+    print "ERROR! Invalid symbol in initial state file:",y
     sys.exit()
 
 if len(init_states) == 0:
     print "ERROR! No initial states found in file:",init_file
 
+## Node data structure
+class Node:
+    state = None
+    generation = None
+    expand = None
+    def __init__(self,state,generation,expand):
+        self.state = state
+        self.generation = generation
+        self.expand = expand
+        
+## Function to perform expansion
+def expand(stack,final,number_of_generations):
+    n = stack.pop()
+    if len(n.expand) == 0:
+        if n.generation = number_of_generations:
+            final.append(n.state)
+        else:
+            n.expand = range(len(n.state))
+            n.generation = n.generation + 1
+            stack.append(n)
+    else:
+        
+
+## Initialize stack and final list
+stack = list()
+final = list()
+for x in init_states:
+    stack.append(Node(x,1,range(len(x))))
+
+## Perform expansion
+while len(stack) > 0: expand(stack,final,number_of_generations)
