@@ -79,7 +79,7 @@ class Node:
         self.expand = expand
         
 ## Function to perform expansion
-def expand(stack,final,number_of_generations):
+def expand(stack,final,number_of_generations,rules):
     n = stack.pop()
     if len(n.expand) == 0:
         if n.generation = number_of_generations:
@@ -89,7 +89,17 @@ def expand(stack,final,number_of_generations):
             n.generation = n.generation + 1
             stack.append(n)
     else:
-        
+        symbol_number = n.expand.pop()
+        symbol = n.state[symbol_number]
+        try:
+            for x in range(len(rules[symbol])):
+                stack.append(Node(n.state[:symbol_number] + x + 
+                                  n.state[symbol_number+1:],
+                                  n.generation,
+                                  n.expand))
+        except: ## No rule found for symbol (assume same for next generation)
+            stack.append(Node(n.state,n.generation,n.expand))
+    del n
 
 ## Initialize stack and final list
 stack = list()
@@ -98,4 +108,6 @@ for x in init_states:
     stack.append(Node(x,1,range(len(x))))
 
 ## Perform expansion
-while len(stack) > 0: expand(stack,final,number_of_generations)
+while len(stack) > 0: expand(stack,final,number_of_generations,rules)
+
+print final
