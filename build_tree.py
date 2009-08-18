@@ -39,7 +39,7 @@ del data
 rules = []
 for x in range(len(filedata)):
     temp = filedata[x].split()
-    rules.append(list())
+    rules.append([])
     for y in temp: rules[x].append(symbols_inv[y])
 
 if len(rules) == 0:
@@ -49,7 +49,7 @@ if len(rules) == 0:
 ## Put rules in dictionary
 rules_inv = dict()
 for x in range(len(symbols)):
-    rules_inv[x] = list()
+    rules_inv[x] = []
     for y in range(len(rules)):
         if rules[y][0] == x: rules_inv[x].append(y)
     if len(rules_inv[x]) == 0:
@@ -64,7 +64,7 @@ f.close()
 init_states = []
 try:
     for x in range(len(filedata)):
-        init_states.append(list())
+        init_states.append([])
         temp = filedata[x].split()
         for y in temp: init_states[x].append(symbols_inv[y])
 except:
@@ -98,7 +98,8 @@ class Node:
                     list(self.selected))
 
 ## Function to print results
-def symbolize(state,symbols,
+def symbolize(state,symbols):
+    return None
 
 ## Function to perform expansion
 def expand(stack,final_set,number_of_generations,rules,rules_inv):
@@ -135,10 +136,10 @@ def expand(stack,final_set,number_of_generations,rules,rules_inv):
     del n
 
 ## Initialize stack and final list
-stack = list()
-final_set = list()
+stack = []
+final_set = []
 for x in range(number_of_generations+1):
-    final_set.append(list())
+    final_set.append([])
 for x in init_states:
     stack.append(Node(x,0,range(len(x)),[0]*len(rules)))
     final_set[0].append(stack[len(stack)-1].copy())
@@ -160,9 +161,9 @@ for n in range(len(final_set)):
     for x in range(len(final)):
         final_states.append(str(final[x].state))
     final_states = list(set(final_states))
-    final_states_probabilities = dict()
+    final_states_probabilities = []
     for x in range(len(final_states)):
-        final_states_probabilities[x] = list()
+        final_states_probabilities.append([])
         final_states_indexed.append([])
         for y in range(len(final)):
             if str(final[y].state) == final_states[x]: 
