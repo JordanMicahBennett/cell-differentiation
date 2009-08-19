@@ -25,9 +25,10 @@ f.close()
 ## Get symbols
 data = []
 for x in range(len(filedata)):
-    temp = filedata[x].split()
-    for y in range(len(temp)):
-        data.append(temp[y])
+    temp = filedata[x].split(':')[0].split()
+    for y in temp:
+        for z in y.split('*'):
+            if not z.isdigit(): data.append(z)
 ## Sort symbols
 symbols = list(set(data))
 symbols_inv = dict()
@@ -38,9 +39,14 @@ del data
 ## Get rules
 rules = []
 for x in range(len(filedata)):
-    temp = filedata[x].split()
+    temp = filedata[x].split(':')[0].split()
     rules.append([])
-    for y in temp: rules[x].append(symbols_inv[y])
+    for y in temp:
+        subtemp = y.split('*')
+        if subtemp[0].isdigit():
+            rules[x] = rules[x] + [symbols_inv[subtemp[1]]]*int(subtemp[0])
+        else:
+            rules[x].append(symbols_inv[y])
 
 if len(rules) == 0:
     print "ERROR! No rules found in file:",rules_file
@@ -65,8 +71,13 @@ init_states = []
 try:
     for x in range(len(filedata)):
         init_states.append([])
-        temp = filedata[x].split()
-        for y in temp: init_states[x].append(symbols_inv[y])
+        temp = filedata[x].split(':')[0].split()
+        for y in temp:
+            subtemp = y.split('*')
+            if subtemp[0].isdigit(): 
+                init_states[x] = init_states[x] + [symbols_inv[subtemp[1]]]*int(subtemp[0])
+            else:
+                init_states[x].append(symbols_inv[y])
 except:
     print "ERROR! Invalid symbol in initial state file:",y
     sys.exit()
@@ -151,11 +162,11 @@ while len(stack) > 0: expand(stack,final_set,number_of_generations,rules,rules_i
 for n in range(len(final_set)):
     final = final_set[n]
 
-## Sort state symbols
+    ## Sort state symbols
     for x in range(len(final)):
         final[x].state.sort()
 
-## Sort final states
+    ## Sort final states
     final_states = []
     final_states_indexed = []
     for x in range(len(final)):
@@ -179,11 +190,47 @@ for n in range(len(final_set)):
     print >> debug,"Generation",n
     print >> debug,final_states
     print >> debug,final_states_probabilities
-    for n in range(len(final)):
-        final[n].write(debug)
+    for x in range(len(final)):
+        final[x].write(debug)
     print >> debug
 
     ## Output results
+    filename = "generation_%03d.txt"%(n)
+    f = open(filename,'w')
+
+    for x in range(len(final_states)):
+        for y in range(len(final_states[x])):
+            if final_states[x][y]:
+                if final_states[x][y] > 1:
+                    print >> f,"%d*%s"%(final_states[x][y],symbols[y]),
+                else:
+                    print >> f,symbols[y],
+        ## Print probabilities
+        print >> f,":",
+
+#         for y in range(len(rules)):
+#             probabilities = dict()
+#             for z in range(len(final_states_probabilities[x])):
+#                 if final_states_probabilities[x][z][y] > 0:
+#                     try:  
+#                         probabilities[final_states_probabilities[x][z][y]] += 1
+#                     except:
+#                         probabilities[final_states_probabilities[x][z][y]] = 1    
+#             for z in probabilities.items():
+#                 if z[0] > 1:
+#                     if z[1] > 1:
+#                         print >> f,"%d*P%d^%d"%(z[1],y,z[0]),
+#                     else:
+#                         print >> f,"P%d^%d"%(y,z[0]),
+#                 else:
+#                     if z[1] > 1:
+#                         print >> f,"%d*P%d"%(z[1],y),
+#                     else:
+#                         print >> f,"P%d"%(y),
+
+        print >> f
+
+    f.close()
 
 ## Extra testing stuff
 print >> debug,"Symbols:"
@@ -195,3 +242,4 @@ print >> debug,rules
 print >> debug,"Inversion:"
 print >> debug,rules_inv
 
+debug.close()
