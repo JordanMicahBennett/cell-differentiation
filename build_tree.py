@@ -153,6 +153,7 @@ for n in range(1,number_of_generations+1):
         x.expand = range(len(x.state))
         stack.append(x)
     final = []
+    gc.collect()
     calls = 0
     while len(stack) > 0: 
         expand(stack,final,rules,rules_inv)
@@ -161,6 +162,8 @@ for n in range(1,number_of_generations+1):
     gen_end = time.time()
     print "Time elapsed:",(gen_end - gen_start)
     print "Expand function called",calls,"times."
+
+    gen_start = time.time()
 
     ## Create probability tables and state representation
     final_states = dict()
@@ -177,8 +180,6 @@ for n in range(1,number_of_generations+1):
             final_states[temp_str].append(final[x].selected)
         except:
             final_states[temp_str] = [final[x].selected]
-
-    gen_start = time.time()
 
     ## Recast probabilities
     for x in final_states.items():
@@ -205,7 +206,6 @@ for n in range(1,number_of_generations+1):
     f.close()
 
     del final_states
-    gc.collect()
 
     gen_end = time.time()
     print "Post-processing time:",(gen_end - gen_start)
