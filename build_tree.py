@@ -2,6 +2,8 @@
 
 from sympy import simplify
 import sys
+import gc
+import time
 
 ##debug = sys.stdout
 ##debug = open("/dev/null",'w')
@@ -114,15 +116,12 @@ class Node:
 def symbolize(state,symbols):
     return None
 
-## Function to perform expansion
-def expand(stack,final_set,number_of_generations,rules,rules_inv):
+## Function to perform expansion for one generation
+def expand(stack,final,rules,rules_inv):
     n = stack.pop()
     if len(n.expand) == 0:
         n.generation += 1
-        final_set[n.generation].append(n.copy())
-        if n.generation < number_of_generations:
-            n.expand = range(len(n.state))
-            stack.append(n)
+        final.append(n.copy())
     else:
         symbol_number = n.expand.pop()
         try:
@@ -137,74 +136,82 @@ def expand(stack,final_set,number_of_generations,rules,rules_inv):
 
 ## Initialize stack and final list
 stack = []
-final_set = []
-for x in range(number_of_generations+1):
-    final_set.append([])
+final = []
 for x in init_states:
-    stack.append(Node(x,0,range(len(x)),[0]*len(rules)))
-    final_set[0].append(stack[len(stack)-1].copy())
+    final.append(Node(x,0,range(len(x)),[0]*len(rules)))
 
+init_time = time.time()
 ## Perform expansion
-while len(stack) > 0: expand(stack,final_set,number_of_generations,rules,rules_inv)
+for n in range(1,number_of_generations+1):
+    print "Processing Generation",n
+    print
 
-## Create probability tables...
-for n in range(len(final_set)):
-    final = final_set[n]
+    gen_start = time.time()
 
-    ## Sort state symbols
+    for x in final:
+        new_node = x.copy()
+        x.expand = range(len(x.state))
+        stack.append(x)
+    final = []
+    calls = 0
+    while len(stack) > 0: 
+        expand(stack,final,rules,rules_inv)
+        calls += 1
+
+    gen_end = time.time()
+    print "Time elapsed:",(gen_end - gen_start)
+    print "Expand function called",calls,"times."
+
+    ## Create probability tables and state representation
+    final_states = dict()
     for x in range(len(final)):
-        final[x].state.sort()
+        temp = [0] * len(symbols)
+        for y in final[x].state:
+            temp[y] += 1
+        temp_str = ""
+        for y in range(len(temp)):
+            if temp[y] > 0:
+                temp_str += " %d*%s"%(temp[y],symbols[y])
+        temp_str = temp_str[1:]
+        try :
+            final_states[temp_str].append(final[x].selected)
+        except:
+            final_states[temp_str] = [final[x].selected]
 
-    ## Sort final states
-    final_states = []
-    final_states_indexed = []
-    for x in range(len(final)):
-        final_states.append(str(final[x].state))
-    final_states = list(set(final_states))
-    final_states_probabilities = []
-    for x in range(len(final_states)):
-        final_states_probabilities.append([])
-        final_states_indexed.append([])
-        for y in range(len(final)):
-            if str(final[y].state) == final_states[x]: 
-                final_states_probabilities[x].append(list(final[y].selected))
-                final_states_indexed[x] = final[y].state
+    gen_start = time.time()
 
-    final_states = []
-    for x in range(len(final_states_indexed)):
-        final_states.append([0]*len(symbols))
-        for y in range(len(symbols)):
-            final_states[x][y] += final_states_indexed[x].count(y)
+    ## Recast probabilities
+    for x in final_states.items():
+        prob_string = "0 "
+        for y in range(len(x[1])):
+            prob_string += "+ ( 1"
+            for z in range(len(x[1][y])):
+                if x[1][y][z] > 0:
+                    if x[1][y][z] == 1:
+                        prob_string += " * P%d"%(z)
+                    else:
+                        prob_string += " * P%d**%d"%(z,x[1][y][z])
+            prob_string += " ) "
+        prob_string = str(simplify(prob_string)).replace("**","^")
+        final_states[x[0]] = prob_string
 
     ## Output results
     filename = "generation_%03d.txt"%(n)
     f = open(filename,'w')
 
-    for x in range(len(final_states)):
-        for y in range(len(final_states[x])):
-            if final_states[x][y]:
-                if final_states[x][y] > 1:
-                    print >> f,"%d*%s"%(final_states[x][y],symbols[y]),
-                else:
-                    print >> f,symbols[y],
-        ## Print probabilities
-        print >> f,":",
-
-        ## New probability strings
-        prob_string = "0 "
-        for y in range(len(final_states_probabilities[x])):
-            prob_string += "+ ( 1"
-            for z in range(len(final_states_probabilities[x][y])):
-                if final_states_probabilities[x][y][z] > 0:
-                    if final_states_probabilities[x][y][z] == 1:
-                        prob_string += " * P%d"%(z)
-                    else:
-                        prob_string += " * P%d**%d"%(z,final_states_probabilities[x][y][z])
-            prob_string += " ) "
-        prob_string = str(simplify(prob_string)).replace("**","^")
-
-        print >> f,prob_string
+    for x in final_states.items():
+        print >> f,x[0],":",x[1]
 
     f.close()
+
+    del final_states
+    gc.collect()
+
+    gen_end = time.time()
+    print "Post-processing time:",(gen_end - gen_start)
+    print
+
+end_time = time.time()
+print "Total elapsed time:",(end_time - init_time)
 
 #debug.close()
