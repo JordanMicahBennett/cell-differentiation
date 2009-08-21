@@ -1,9 +1,10 @@
 #!/usr/bin/python
 
 import sys
+from sympy import *
 
-debug = sys.stdout
-##debug = open("/dev/null",'w')
+##debug = sys.stdout
+debug = open("/dev/null",'w')
 
 if len(sys.argv) != 4:
     print "Usage:",sys.argv[0],"<num_generations> <rule_file> <init_file>"
@@ -68,19 +69,20 @@ f.close()
 
 ## Get initial states
 init_states = []
-try:
-    for x in range(len(filedata)):
-        init_states.append([])
-        temp = filedata[x].split(':')[0].split()
-        for y in temp:
+for x in range(len(filedata)):
+    init_states.append([])
+    temp = filedata[x].split(':')
+    temp = temp[0].split()
+    for y in temp:
+        try:
             subtemp = y.split('*')
             if subtemp[0].isdigit(): 
                 init_states[x] = init_states[x] + [symbols_inv[subtemp[1]]]*int(subtemp[0])
             else:
                 init_states[x].append(symbols_inv[y])
-except:
-    print "ERROR! Invalid symbol in initial state file:",y
-    sys.exit()
+        except:
+            print "ERROR! Invalid symbol in initial state file:",y
+            sys.exit()
 init_states.reverse()
 
 if len(init_states) == 0:
@@ -208,27 +210,20 @@ for n in range(len(final_set)):
         ## Print probabilities
         print >> f,":",
 
-#         for y in range(len(rules)):
-#             probabilities = dict()
-#             for z in range(len(final_states_probabilities[x])):
-#                 if final_states_probabilities[x][z][y] > 0:
-#                     try:  
-#                         probabilities[final_states_probabilities[x][z][y]] += 1
-#                     except:
-#                         probabilities[final_states_probabilities[x][z][y]] = 1    
-#             for z in probabilities.items():
-#                 if z[0] > 1:
-#                     if z[1] > 1:
-#                         print >> f,"%d*P%d^%d"%(z[1],y,z[0]),
-#                     else:
-#                         print >> f,"P%d^%d"%(y,z[0]),
-#                 else:
-#                     if z[1] > 1:
-#                         print >> f,"%d*P%d"%(z[1],y),
-#                     else:
-#                         print >> f,"P%d"%(y),
+        ## New probability strings
+        prob_string = "0 "
+        for y in range(len(final_states_probabilities[x])):
+            prob_string += "+ ( 1"
+            for z in range(len(final_states_probabilities[x][y])):
+                if final_states_probabilities[x][y][z] > 0:
+                    if final_states_probabilities[x][y][z] == 1:
+                        prob_string += " * P%d"%(z)
+                    else:
+                        prob_string += " * P%d**%d"%(z,final_states_probabilities[x][y][z])
+            prob_string += " ) "
+        prob_string = str(simplify(prob_string)).replace("**","^")
 
-        print >> f
+        print >> f,prob_string
 
     f.close()
 
