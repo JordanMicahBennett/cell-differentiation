@@ -4,7 +4,7 @@ from sympy import simplify
 import sys
 
 ##debug = sys.stdout
-debug = open("/dev/null",'w')
+##debug = open("/dev/null",'w')
 
 if len(sys.argv) != 4:
     print "Usage:",sys.argv[0],"<num_generations> <rule_file> <init_file>"
@@ -116,36 +116,23 @@ def symbolize(state,symbols):
 
 ## Function to perform expansion
 def expand(stack,final_set,number_of_generations,rules,rules_inv):
-    print >> debug,"Stack:"
-    for s in stack:
-        s.write(debug)
-    print >> debug
     n = stack.pop()
-    print >> debug,"Starting:",n.state
     if len(n.expand) == 0:
         n.generation += 1
         final_set[n.generation].append(n.copy())
         if n.generation < number_of_generations:
             n.expand = range(len(n.state))
             stack.append(n)
-        print >> debug
     else:
         symbol_number = n.expand.pop()
-        print >> debug,"Modifying:",symbol_number
         try:
             for x in rules_inv[n.state[symbol_number]]:
-                print >> debug,"First:",n.state[:symbol_number]
-                print >> debug,"Middle:",rules[x][1:]
-                print >> debug,"Last:",n.state[symbol_number+1:]
-                print >> debug,"Ending:",n.state[:symbol_number] + rules[x][1:] + n.state[symbol_number+1:]
                 new_node = n.copy()
                 new_node.state = new_node.state[:symbol_number] + rules[x][1:] + new_node.state[symbol_number+1:]
                 new_node.selected[x] += 1
                 stack.append(new_node)
         except:
-            print >> debug,"WARNING! No rules apply..."
             stack.append(n)
-        print >> debug
     del n
 
 ## Initialize stack and final list
@@ -189,13 +176,6 @@ for n in range(len(final_set)):
         for y in range(len(symbols)):
             final_states[x][y] += final_states_indexed[x].count(y)
 
-    print >> debug,"Generation",n
-    print >> debug,final_states
-    print >> debug,final_states_probabilities
-    for x in range(len(final)):
-        final[x].write(debug)
-    print >> debug
-
     ## Output results
     filename = "generation_%03d.txt"%(n)
     f = open(filename,'w')
@@ -227,14 +207,4 @@ for n in range(len(final_set)):
 
     f.close()
 
-## Extra testing stuff
-print >> debug,"Symbols:"
-print >> debug,symbols
-print >> debug,"Inversion:"
-print >> debug,symbols_inv
-print >> debug,"Rules:"
-print >> debug,rules
-print >> debug,"Inversion:"
-print >> debug,rules_inv
-
-debug.close()
+#debug.close()
