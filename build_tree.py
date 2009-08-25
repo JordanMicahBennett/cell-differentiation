@@ -41,9 +41,15 @@ del data
 
 ## Get rules
 rules = []
+rule_probs = []
 for x in range(len(filedata)):
-    temp = filedata[x].split(':')[0].split()
+    temp = filedata[x].split(':')
     rules.append([])
+    try:
+        rule_probs.append(temp[1])
+    except:
+        rule_probs.append("P%d"%len(rules))
+    temp = temp[0].split()
     for y in temp:
         subtemp = y.split('*')
         if subtemp[0].isdigit():
@@ -54,6 +60,17 @@ for x in range(len(filedata)):
 if len(rules) == 0:
     print "ERROR! No rules found in file:",rules_file
     sys.exit()
+
+## Are we using numbers or symbols for probabilities?
+numeric = True
+rule_probabilities = []
+try:
+    for x in range(len(rule_probs)):
+        rule_probabilities.append(float(rule_probabilities[x]))
+except:
+    rule_probabilities = rule_probs
+    numeric = False
+del rule_probs
 
 ## Put rules in dictionary
 rules_inv = dict()
@@ -189,9 +206,9 @@ for n in range(1,number_of_generations+1):
             for z in range(len(x[1][y])):
                 if x[1][y][z] > 0:
                     if x[1][y][z] == 1:
-                        prob_string += " * P%d"%(z)
+                        prob_string += " * %s"%(rule_probabilities[z])
                     else:
-                        prob_string += " * P%d**%d"%(z,x[1][y][z])
+                        prob_string += " * %s**%d"%(rule_probabilities[z],x[1][y][z])
             prob_string += " ) "
         prob_string = str(simplify(prob_string)).replace("**","^")
         final_states[x[0]] = prob_string
