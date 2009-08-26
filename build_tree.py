@@ -62,7 +62,7 @@ for x in range(len(filedata)):
     temp = filedata[x].split(':')
     rules.append([])
     try:
-        rule_probs.append(temp[1].split()[0])
+        rule_probs.append(temp[1].rstrip('\n'))
     except:
         rule_probs.append("P%d"%len(rules))
     temp = temp[0].split()
@@ -82,7 +82,7 @@ numeric = True
 rule_probabilities = []
 try:
     for x in range(len(rule_probs)):
-        rule_probabilities.append(float(rule_probabilities[x]))
+        rule_probabilities.append(float(rule_probs[x]))
 except:
     rule_probabilities = rule_probs
     numeric = False
@@ -215,18 +215,24 @@ for n in range(1,number_of_generations+1):
             final_states[temp_str] = [final[x].selected]
 
     ## Recast probabilities
-    if not numeric:
+    if not numeric or use_simplify:
         for x in final_states.items():
-            prob_string = "0.0 "
+            prob_strings = dict()
             for y in range(len(x[1])):
-                prob_string += "+ ( 1.0"
+                prob_string = ""
                 for z in range(len(x[1][y])):
                     if x[1][y][z] > 0:
                         if x[1][y][z] == 1:
                             prob_string += " * %s"%(rule_probabilities[z])
                         else:
                             prob_string += " * %s**%d"%(rule_probabilities[z],x[1][y][z])
-                prob_string += " ) "
+                try:
+                    prob_strings[prob_string] += 1
+                except:
+                    prob_strings[prob_string] = 1
+            prob_string = "0.0 "
+            for y in prob_strings.items():
+                prob_string += "+ (%d %s) "%(y[1],y[0])
             if (use_simplify):
                 prob_string = str(simplify(prob_string))
             final_states[x[0]] = prob_string
@@ -237,9 +243,9 @@ for n in range(1,number_of_generations+1):
                 prob_sub = 1
                 for z in range(len(x[1][y])):
                     if x[1][y][z] > 0:
-                        prob_sub *= rule_probabilities[z]
+                        prob_sub *= rule_probabilities[z]**x[1][y][z]
                 prob += prob_sub
-        final_states[x[0]] = prob
+            final_states[x[0]] = str(prob)
 
     ## Output results
     filename = "generation_%03d.txt"%(n)

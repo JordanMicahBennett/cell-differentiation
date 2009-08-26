@@ -5,6 +5,6 @@ S 2*B
 3*B
 2*T
 2*B
-S
-T
-B
+S D
+T D
+B D
