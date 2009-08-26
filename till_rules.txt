@@ -1,2 +1,2 @@
-S D
-3*S
+S D : (1.0-Prob1)
+3*S : Prob1

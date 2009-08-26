@@ -8,10 +8,26 @@ import time
 ##debug = sys.stdout
 ##debug = open("/dev/null",'w')
 
-if len(sys.argv) != 4:
-    print "Usage:",sys.argv[0],"<num_generations> <rule_file> <init_file>"
+use_simplify = False
+
+if len(sys.argv) != 4 and len(sys.argv) !=5 :
+    print
+    print "Usage:",sys.argv[0]," [-s] <num_generations> <rule_file> <init_file>"
+    print "    -s : simplify the probabilities symbolically"
+    print
     sys.exit()
 
+if len(sys.argv) == 5:
+    if sys.argv[1] == "-s":
+        sys.argv.remove("-s")
+        use_simplify = True
+    else:
+        print
+        print "Usage:",sys.argv[0]," [-s] <num_generations> <rule_file> <init_file>"
+        print "    -s : simplify the probabilities symbolically"
+        print
+        sys.exit()
+        
 number_of_generations = int(sys.argv[1])
 rule_file = sys.argv[2]
 init_file = sys.argv[3]
@@ -46,7 +62,7 @@ for x in range(len(filedata)):
     temp = filedata[x].split(':')
     rules.append([])
     try:
-        rule_probs.append(temp[1])
+        rule_probs.append(temp[1].split()[0])
     except:
         rule_probs.append("P%d"%len(rules))
     temp = temp[0].split()
@@ -199,19 +215,31 @@ for n in range(1,number_of_generations+1):
             final_states[temp_str] = [final[x].selected]
 
     ## Recast probabilities
-    for x in final_states.items():
-        prob_string = "0 "
-        for y in range(len(x[1])):
-            prob_string += "+ ( 1"
-            for z in range(len(x[1][y])):
-                if x[1][y][z] > 0:
-                    if x[1][y][z] == 1:
-                        prob_string += " * %s"%(rule_probabilities[z])
-                    else:
-                        prob_string += " * %s**%d"%(rule_probabilities[z],x[1][y][z])
-            prob_string += " ) "
-        prob_string = str(simplify(prob_string)).replace("**","^")
-        final_states[x[0]] = prob_string
+    if not numeric:
+        for x in final_states.items():
+            prob_string = "0.0 "
+            for y in range(len(x[1])):
+                prob_string += "+ ( 1.0"
+                for z in range(len(x[1][y])):
+                    if x[1][y][z] > 0:
+                        if x[1][y][z] == 1:
+                            prob_string += " * %s"%(rule_probabilities[z])
+                        else:
+                            prob_string += " * %s**%d"%(rule_probabilities[z],x[1][y][z])
+                prob_string += " ) "
+            if (use_simplify):
+                prob_string = str(simplify(prob_string))
+            final_states[x[0]] = prob_string
+    else:
+        for x in final_states.items():
+            prob = 0
+            for y in range(len(x[1])):
+                prob_sub = 1
+                for z in range(len(x[1][y])):
+                    if x[1][y][z] > 0:
+                        prob_sub *= rule_probabilities[z]
+                prob += prob_sub
+        final_states[x[0]] = prob
 
     ## Output results
     filename = "generation_%03d.txt"%(n)
