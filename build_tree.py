@@ -36,6 +36,52 @@ if number_of_generations < 1:
     print "ERROR! Number of generations must be >= 1"
     sys.exit()
 
+## Minimal checking finished --- we are a go!
+
+## Node data structure
+class Node:
+    state = None
+    generation = None
+    expand = None
+    selected = None
+    base_prob = None
+    def __init__(self,state,generation,expand,selected,base_prob):
+        self.state = state
+        self.generation = generation
+        self.expand = expand
+        self.selected = selected
+        self.base_prob = base_prob
+    def write(self,stream=sys.stdout):
+        print >> stream,"State:",self.state
+        print >> stream,"Generation:",self.generation
+        print >> stream,"Need Expansion:",self.expand
+        print >> stream,"Rules Selected:",self.selected
+        print >> stream,"Base Probability:",self.base_prob
+    def copy(self):
+        return Node(list(self.state),
+                    self.generation,
+                    list(self.expand),
+                    list(self.selected),
+                    self.base_prob)
+
+## Function to perform expansion for one generation
+def expand(stack,final,rules,rules_inv):
+    n = stack.pop()
+    if len(n.expand) == 0:
+        n.generation += 1
+        final.append(n.copy())
+    else:
+        symbol_number = n.expand.pop()
+        try:
+            for x in rules_inv[n.state[symbol_number]]:
+                new_node = n.copy()
+                new_node.state = new_node.state[:symbol_number] + rules[x][1:] + new_node.state[symbol_number+1:]
+                new_node.selected[x] += 1
+                stack.append(new_node)
+        except:
+            stack.append(n)
+    del n
+
 ## Read rule file
 f = open(rule_file,'r')
 filedata = f.readlines()
@@ -105,63 +151,23 @@ f.close()
 ## Get initial states
 init_states = []
 for x in range(len(filedata)):
-    init_states.append([])
     temp = filedata[x].split(':')
-    temp = temp[0].split()
-    for y in temp:
+    state = [0] * len(symbols)
+    for y in temp[0]:
         try:
             subtemp = y.split('*')
             if subtemp[0].isdigit(): 
-                init_states[x] = init_states[x] + [symbols_inv[subtemp[1]]]*int(subtemp[0])
+                state[symbols_inv[subtemp[1]]] += int(subtemp[0])
             else:
-                init_states[x].append(symbols_inv[y])
+                state[symbols_inv[y]] += 1
         except:
             print "ERROR! Invalid symbol in initial state file:",y
             sys.exit()
+    
 init_states.reverse()
 
 if len(init_states) == 0:
     print "ERROR! No initial states found in file:",init_file
-
-## Node data structure
-class Node:
-    state = None
-    generation = None
-    expand = None
-    selected = None
-    def __init__(self,state,generation,expand,selected):
-        self.state = state
-        self.generation = generation
-        self.expand = expand
-        self.selected = selected
-    def write(self,stream=sys.stdout):
-        print >> stream,"State:",self.state
-        print >> stream,"Generation:",self.generation
-        print >> stream,"Need Expansion:",self.expand
-        print >> stream,"Rules Selected:",self.selected
-    def copy(self):
-        return Node(list(self.state),
-                    self.generation,
-                    list(self.expand),
-                    list(self.selected))
-
-## Function to perform expansion for one generation
-def expand(stack,final,rules,rules_inv):
-    n = stack.pop()
-    if len(n.expand) == 0:
-        n.generation += 1
-        final.append(n.copy())
-    else:
-        symbol_number = n.expand.pop()
-        try:
-            for x in rules_inv[n.state[symbol_number]]:
-                new_node = n.copy()
-                new_node.state = new_node.state[:symbol_number] + rules[x][1:] + new_node.state[symbol_number+1:]
-                new_node.selected[x] += 1
-                stack.append(new_node)
-        except:
-            stack.append(n)
-    del n
 
 ## Initialize stack and final list
 stack = []
