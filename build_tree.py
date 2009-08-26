@@ -145,10 +145,6 @@ class Node:
                     list(self.expand),
                     list(self.selected))
 
-## Function to print results
-def symbolize(state,symbols):
-    return None
-
 ## Function to perform expansion for one generation
 def expand(stack,final,rules,rules_inv):
     n = stack.pop()
