@@ -1,6 +1,8 @@
 #!/usr/bin/python -u
 
 from sympy import simplify
+from collections import deque
+import os
 import sys
 import gc
 import time
@@ -33,166 +35,298 @@ rule_file = sys.argv[2]
 init_file = sys.argv[3]
 
 if number_of_generations < 1:
-    print "ERROR! Number of generations must be >= 1"
+    sys.stderr.write("ERROR! Number of generations must be >= 1\n")
     sys.exit()
 
 ## Minimal checking finished --- we are a go!
 
+## Symbol table
+class SymbolTable:
+    symbols = []
+    symbols_inv = dict()
+    rules = []
+    rules_inv = dict()
+    rules_probabilities = []
+    use_numeric = True
+    def read_rules(self,rule_file):
+        ## Read rule file
+        f = open(rule_file,'r')
+        filedata = f.readlines()
+        f.close()
+        
+        ## Get symbols
+        data = []
+        for x in range(len(filedata)):
+            temp = filedata[x].split(':')[0].split()
+            for y in temp:
+                for z in y.split('*'):
+                    if not z.isdigit(): data.append(z)
+        ## Sort symbols
+        self.symbols = list(set(data))
+
+        if len(self.symbols) == 0:
+            sys.stderr.write("ERROR! No symbols found in file: %s\n"%rule_file)
+            return False
+
+        ## Symbol inversion table
+        for x in range(len(self.symbols)):
+            self.symbols_inv[self.symbols[x]] = x
+        del data
+
+        ## Get rules
+        rule_probs = []
+        for x in range(len(filedata)):
+            temp = filedata[x].split(':')
+            self.rules.append([0] * len(self.symbols))
+            try:
+                prob = temp[1].replace(' ','').rstrip('\n')
+                if prob:
+                    rule_probs.append(prob)
+                else:
+                    rule_probs.append("P%d"%len(self.rules))
+            except:
+                rule_probs.append("P%d"%len(self.rules))
+            temp = temp[0].split()
+            first = -1
+            for y in temp:
+                subtemp = y.split('*')
+                if subtemp[0].isdigit():
+                    self.rules[x][self.symbols_inv[subtemp[1]]] += int(subtemp[0])
+                    if first < 0:
+                        first = self.symbols_inv[subtemp[1]]
+                else:
+                    self.rules[x][self.symbols_inv[subtemp[0]]] += 1
+                    if first < 0:
+                        first = self.symbols_inv[subtemp[0]]
+            self.rules[x][first] -= 1
+            try:
+                self.rules_inv[first].append(x)
+            except:
+                self.rules_inv[first] = [x]
+                    
+        ## Are we using numbers or self.symbols for probabilities?
+        self.use_numeric = True
+        try:
+            for x in range(len(rule_probs)):
+                self.rules_probabilities.append(float(rule_probs[x]))
+        except:
+            self.rules_probabilities = rule_probs
+            self.use_numeric = False
+            del rule_probs
+
+        ## Success!!
+        return True
+
 ## Node data structure
 class Node:
     state = None
-    generation = None
-    expand = None
+    expandable = None
     selected = None
-    base_prob = None
-    def __init__(self,state,generation,expand,selected,base_prob):
-        self.state = state
-        self.generation = generation
-        self.expand = expand
-        self.selected = selected
-        self.base_prob = base_prob
-    def write(self,stream=sys.stdout):
-        print >> stream,"State:",self.state
-        print >> stream,"Generation:",self.generation
-        print >> stream,"Need Expansion:",self.expand
-        print >> stream,"Rules Selected:",self.selected
-        print >> stream,"Base Probability:",self.base_prob
+    base_prob = 1
+    symbol_table = None
+    def __init__(self,symbol_table):
+        self.symbol_table = symbol_table
     def copy(self):
-        return Node(list(self.state),
-                    self.generation,
-                    list(self.expand),
-                    list(self.selected),
-                    self.base_prob)
-
-## Function to perform expansion for one generation
-def expand(stack,final,rules,rules_inv):
-    n = stack.pop()
-    if len(n.expand) == 0:
-        n.generation += 1
-        final.append(n.copy())
-    else:
-        symbol_number = n.expand.pop()
-        try:
-            for x in rules_inv[n.state[symbol_number]]:
-                new_node = n.copy()
-                new_node.state = new_node.state[:symbol_number] + rules[x][1:] + new_node.state[symbol_number+1:]
-                new_node.selected[x] += 1
-                stack.append(new_node)
-        except:
-            stack.append(n)
-    del n
-
-## Read rule file
-f = open(rule_file,'r')
-filedata = f.readlines()
-f.close()
-
-## Get symbols
-data = []
-for x in range(len(filedata)):
-    temp = filedata[x].split(':')[0].split()
-    for y in temp:
-        for z in y.split('*'):
-            if not z.isdigit(): data.append(z)
-## Sort symbols
-symbols = list(set(data))
-symbols_inv = dict()
-for x in range(len(symbols)):
-    symbols_inv[symbols[x]] = x
-del data
-
-## Get rules
-rules = []
-rule_probs = []
-for x in range(len(filedata)):
-    temp = filedata[x].split(':')
-    rules.append([])
-    try:
-        rule_probs.append(temp[1].rstrip('\n'))
-    except:
-        rule_probs.append("P%d"%len(rules))
-    temp = temp[0].split()
-    for y in temp:
-        subtemp = y.split('*')
-        if subtemp[0].isdigit():
-            rules[x] = rules[x] + [symbols_inv[subtemp[1]]]*int(subtemp[0])
+        new_node = Node(self.symbol_table)
+        new_node.state = list(self.state)
+        new_node.expandable = list(self.expandable)
+        new_node.selected = list(self.selected)
+        new_node.base_prob = self.base_prob
+        return new_node
+    def write(self,f):
+        print >> f,"Object:",self
+        print >> f,"State:",self.state
+        print >> f,"Expandable:",self.expandable
+        print >> f,"Selected:",self.selected
+        print >> f,"Base Probability:",self.base_prob
+        print >> f,"Symbol Table:",self.symbol_table
+        print >> f,"As String:",self.tostring()
+        print >> f
+    def tostring(self):
+        result = ""
+        for x in range(len(self.state)):
+            if self.state[x] > 0:
+                if self.state[x] > 1:
+                    result += "%d*%s "%(self.state[x],self.symbol_table.symbols[x])
+                else:
+                    result += "%s "%(self.symbol_table.symbols[x])
+        result += ":"
+        if (self.symbol_table.use_numeric):
+            temp = self.base_prob
+            for x in range(len(self.selected)):
+                if self.selected[x] > 0:
+                    temp *= pow(self.symbol_table.rules_probabilities[x],self.selected[x])
+            result += " " + str(temp)
         else:
-            rules[x].append(symbols_inv[y])
+            result += "%s"%(self.base_prob)
+            for x in range(len(self.selected)):
+                if self.selected[x] > 0:
+                    if self.state[x] > 1:
+                        result += "*%s**%d"%(self.symbol_table.rules_probabilities[x],self.selected[x])
+        return result
+    def fromstring(self,input=None):
+        if input == None:
+            return self
+        temp = input.split(':')
+        self.state = [0] * len(self.symbol_table.symbols)
+        occupied = False
+        for y in temp[0].split():
+            try:
+                subtemp = y.split('*')
+                if subtemp[0].isdigit(): 
+                    self.state[self.symbol_table.symbols_inv[subtemp[1]]] += int(subtemp[0])
+                else:
+                    self.state[self.symbol_table.symbols_inv[y]] += 1
+                occupied = True
+            except:
+                sys.stderr.write("ERROR! Invalid symbol in initial state spec: %s\n"%y)
+                self.state = None
+                return None
+        if not occupied:
+            self.state = None
+            return None
+        try:
+            prob = temp[1].rstrip('\n')
+        except:
+            prob = 1
+        try:
+            self.base_prob = float(prob)
+        except:
+            self.base_prob = str(prob)
+            self.symbol_table.use_numeric = False
+        self.expandable = list(self.state)
+        self.selected = [0] * len(self.symbol_table.rules)
+        return self                
+    def expand(self,stack,outfile):
+        expand = -1
+        stack_add = 0
+        for x in range(len(self.expandable)):
+            if self.expandable[x] > 0:
+                expand = x
+                break
+        if expand >= 0:
+            self.expandable[expand] -= 1
+            self.state[expand] -= 1
+            try:
+                for x in self.symbol_table.rules_inv[expand]: 
+                    n = self.copy()
+                    for y in range(len(n.state)):
+                        n.state[y] += self.symbol_table.rules[x][y]
+                    n.selected[x] += 1
+                    stack.append(n)
+                    stack_add += 1
+            except:
+                self.state[expand] += 1
+                self.expandable[expand] = 0
+                stack.append(self)
+                stack_add += 1
+        else:
+            print >> outfile,self.tostring()
+        return stack_add
 
-if len(rules) == 0:
-    print "ERROR! No rules found in file:",rules_file
-    sys.exit()
+def populate_stack(stack,symbol_table,state_file):
+    f = open(state_file,'r')
+    stack_count = 0
+    for x in f:
+        new_node = Node(symbol_table)
+        new_node = new_node.fromstring(x)
+        if new_node:
+            stack.appendleft(new_node)
+            stack_count += 1
+    f.close()
+    if stack_count == 0:
+        sys.stderr.write("ERROR! No states found in file: %s\n"%init_file)
+        return False
+    return True
 
-## Are we using numbers or symbols for probabilities?
-numeric = True
-rule_probabilities = []
-try:
-    for x in range(len(rule_probs)):
-        rule_probabilities.append(float(rule_probs[x]))
-except:
-    rule_probabilities = rule_probs
-    numeric = False
-del rule_probs
+def simplify_states_numeric(infile,outfile):
+    (current_state,current_probability) = infile.readline().rstrip('\n').split(" : ")
+    current_probability = float(current_probability)
+    for line in infile:
+        (state,probability) = line.rstrip('\n').split(" : ")
+        probability = float(probability)
+        if state == current_state:
+            current_probability += probability
+        else:
+            print >> outfile,current_state,":",current_probability
+            current_probability = probability
+            current_state = state
+    print >> outfile,current_state,":",current_probability        
+    
+def simplify_states_symbolic(infile,outfile,use_simplify):
+    (current_state,current_probability) = infile.readline().rstrip('\n').split(" : ")
+    print current_state,current_probability
+    prob_count = 1
+    prob_string = '(0.0'
+    for line in infile:
+        (state,probability) = line.rstrip('\n').split(" : ")
+        print state,probability
+        if state == current_state and probability == current_probability:
+            prob_count += 1
+        elif state == current_state:
+            if (prob_count > 1):
+                prob_string += "+%d*%s"%(prob_count,current_probability)
+            else:
+                prob_string += "+%s"%(current_probability)
+            prob_count = 1
+            current_probability = probability
+        else:
+            if (prob_count > 1):
+                prob_string += "+%d*%s"%(prob_count,current_probability)
+            else:
+                prob_string += "+%s"%(current_probability)
+            prob_string += ")"
+            if (use_simplify):
+                prob_string = "(" + str(simplify(prob_string)) + ")"
+            print >> outfile,current_state,":",prob_string
+            prob_string = '(0.0'
+            prob_count = 1
+            current_state = state
+            current_probability = probability
+    prob_string += ")"
+    if (use_simplify):
+        prob_string = "(" + str(simplify(prob_string)) + ")"
+    print >> outfile,current_state,":",prob_string
+    
+            
 
-## Put rules in dictionary
-rules_inv = dict()
-for x in range(len(symbols)):
-    rules_inv[x] = []
-    for y in range(len(rules)):
-        if rules[y][0] == x: rules_inv[x].append(y)
-    if len(rules_inv[x]) == 0:
-        del rules_inv[x]
+symbol_table = SymbolTable()
+stack = deque()
 
-## Read initial state file
 f = open(init_file,'r')
-filedata = f.readlines()
+if not symbol_table.read_rules(rule_file):
+    sys.exit()
 f.close()
 
-## Get initial states
-init_states = []
-for x in range(len(filedata)):
-    temp = filedata[x].split(':')
-    state = [0] * len(symbols)
-    for y in temp[0]:
-        try:
-            subtemp = y.split('*')
-            if subtemp[0].isdigit(): 
-                state[symbols_inv[subtemp[1]]] += int(subtemp[0])
-            else:
-                state[symbols_inv[y]] += 1
-        except:
-            print "ERROR! Invalid symbol in initial state file:",y
-            sys.exit()
-    
-init_states.reverse()
-
-if len(init_states) == 0:
-    print "ERROR! No initial states found in file:",init_file
-
-## Initialize stack and final list
-stack = []
-final = []
-for x in init_states:
-    final.append(Node(x,0,range(len(x)),[0]*len(rules)))
+## Extra line
+print
 
 init_time = time.time()
 ## Perform expansion
-for n in range(1,number_of_generations+1):
-    print "Processing Generation",n
+for n in range(number_of_generations):
+    print "Processing Generation",n+1
     print
+
+    ## Read previous state file
+    if n == 0:
+        if not populate_stack(stack,symbol_table,init_file):
+            sys.exit()
+    else:
+        if not populate_stack(stack,symbol_table,"generation_%03d.txt"%(n)):
+            sys.stderr.write("ERROR! Could not get states from previous generation: %s\n"%("generation_%03d.txt"%(n)))
+            sys.exit()
+        
+    ## Drop garbage before this generation
+    gc.collect()
 
     gen_start = time.time()
 
-    for x in final:
-        new_node = x.copy()
-        x.expand = range(len(x.state))
-        stack.append(x)
-    final = []
-    gc.collect()
+    f = open(".build_tree.%s.dat"%(os.getpid()),'w')
     calls = 0
     while len(stack) > 0: 
-        expand(stack,final,rules,rules_inv)
+        stack.pop().expand(stack,f)
         calls += 1
+    f.close()
 
     gen_end = time.time()
     print "Time elapsed:",(gen_end - gen_start)
@@ -200,65 +334,20 @@ for n in range(1,number_of_generations+1):
 
     gen_start = time.time()
 
-    ## Create probability tables and state representation
-    final_states = dict()
-    for x in range(len(final)):
-        temp = [0] * len(symbols)
-        for y in final[x].state:
-            temp[y] += 1
-        temp_str = ""
-        for y in range(len(temp)):
-            if temp[y] > 0:
-                temp_str += " %d*%s"%(temp[y],symbols[y])
-        temp_str = temp_str[1:]
-        try :
-            final_states[temp_str].append(final[x].selected)
-        except:
-            final_states[temp_str] = [final[x].selected]
+    ## Catalog the current generation
+    f = os.popen("sort .build_tree.%s.dat"%(os.getpid()),'r')
+    gen_file = open("generation_%03d.txt"%(n+1),'w')
 
-    ## Recast probabilities
-    if not numeric or use_simplify:
-        for x in final_states.items():
-            prob_strings = dict()
-            for y in range(len(x[1])):
-                prob_string = ""
-                for z in range(len(x[1][y])):
-                    if x[1][y][z] > 0:
-                        if x[1][y][z] == 1:
-                            prob_string += " * %s"%(rule_probabilities[z])
-                        else:
-                            prob_string += " * %s**%d"%(rule_probabilities[z],x[1][y][z])
-                try:
-                    prob_strings[prob_string] += 1
-                except:
-                    prob_strings[prob_string] = 1
-            prob_string = "0.0 "
-            for y in prob_strings.items():
-                prob_string += "+ (%d %s) "%(y[1],y[0])
-            if (use_simplify):
-                prob_string = str(simplify(prob_string))
-            final_states[x[0]] = prob_string
+    print "Build tree was: .build_tree.%s.dat"%(os.getpid())
+    if symbol_table.use_numeric:
+        simplify_states_numeric(f,gen_file)
     else:
-        for x in final_states.items():
-            prob = 0
-            for y in range(len(x[1])):
-                prob_sub = 1
-                for z in range(len(x[1][y])):
-                    if x[1][y][z] > 0:
-                        prob_sub *= rule_probabilities[z]**x[1][y][z]
-                prob += prob_sub
-            final_states[x[0]] = str(prob)
-
-    ## Output results
-    filename = "generation_%03d.txt"%(n)
-    f = open(filename,'w')
-
-    for x in final_states.items():
-        print >> f,x[0],":",x[1]
+        simplify_states_symbolic(f,gen_file,use_simplify)
 
     f.close()
+    gen_file.close()
 
-    del final_states
+    os.remove(".build_tree.%s.dat"%(os.getpid()))
 
     gen_end = time.time()
     print "Post-processing time:",(gen_end - gen_start)
