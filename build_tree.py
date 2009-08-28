@@ -4,76 +4,70 @@ from sympy import simplify
 from collections import deque
 import os
 import sys
+import getopt
 import gc
 import time
 import threading
 
 def usage():
     print
-    print "Usage:",sys.argv[0]," [-s] [-t <num_threads>] <num_generations> <rule_file> <init_file>"
-    print "    -s : simplify the probabilities symbolically"
-    print "    -t : use threading and provided number of threads."
+    print "Usage:",sys.argv[0]," [-s] [-t <num_threads>]  <num_generations> <rule_file> <init_file>"
+    print "    -s | --symbolic     : simplify the probabilities symbolically"
+    print "    -t | --threads=     : use threading and provided number of threads."
     print
-    sys.exit()
+    sys.exit(-1)
 
 
-## Check for correct number of arguments
-if len(sys.argv) < 4 or len(sys.argv) > 7:
-    usage()
-
-## Check for simplify
 use_simplify = False
-if "-s" in sys.argv:
-    use_simplify = True
-    sys.argv.remove("-s")
-
 use_threads = False
 number_of_threads = 1
-if sys.argv[1][0:2] == "-t":
-    use_threads = True
-    if sys.argv[1][2:] != '':
-        try:
-            number_of_threads = int(sys.argv[1][2:])
-        except:
-            sys.stderr.write("\nERROR! Provided threads not an integer: %s\n\n"%(sys.argv[1][2:]))
-            sys.exit()
-        sys.argv = [sys.argv[0]] + sys.argv[2:]
-    else:
-        try:
-            number_of_threads = int(sys.argv[2])
-        except:
-            sys.stderr.write("\nERROR! Provided threads not an integer: %s\n\n"%(sys.argv[2]))
-            sys.exit()
-        sys.argv = [sys.argv[0]] + sys.argv[3:]
 
-if len(sys.argv) != 4:
+## Parse options
+try:
+    opts, args = getopt.getopt(sys.argv[1:],"st:",["symbolic","threads="])
+except getopt.GetoptError:
     usage()
 
-if number_of_threads < 1:
+for opt,arg in opts:
+    if opt in ("-s","--symbolic"):
+        use_simplify = True
+    elif opt in ("-t","--threads"):
+        use_threads = True
+        try:
+            number_of_threads = int(arg)
+        except:
+            sys.stderr.write("\nERROR! Provided threads not an integer: %s\n\n"%(arg))
+            sys.exit(-1)
+
+if use_threads and number_of_threads < 1:
     sys.stderr.write("\nERROR! Number of threads must be greater than zero.\n\n")
-    sys.exit()
+    sys.exit(-1)
+    
+## Check for correct number of arguments
+if len(args) != 3:
+    usage()
         
 number_of_generations = 0
+rule_file = args[1]
+init_file = args[2]
+
 try :
-    number_of_generations = int(sys.argv[1])
+    number_of_generations = int(args[0])
 except:
     sys.stderr.write("\nERROR! Provided generations not an integer: %s\n\n"%(sys.argv[1]))
     usage()
 
 if number_of_generations <= 0:
     sys.stderr.write("\nERROR! Number of generations must be greater than zero.\n\n")
-    sys.exit()
-
-rule_file = sys.argv[2]
-init_file = sys.argv[3]
+    sys.exit(-1)
 
 if not os.path.isfile(rule_file):
     sys.stderr.write("\nERROR! Rules file does not exist: %s\n\n"%(rule_file))
-    sys.exit()
+    sys.exit(-1)
 
 if not os.path.isfile(init_file):
     sys.stderr.write("\nERROR! Initial state file does not exist: %s\n\n"%(init_file))
-    sys.exit()
+    sys.exit(-1)
 
 ## Minimal checking finished --- we are a go!
 
@@ -349,7 +343,7 @@ stack = deque()
 
 ## Read rules into symbol_table
 if not symbol_table.read_rules(rule_file):
-    sys.exit()
+    sys.exit(-1)
 
 ## Extra line
 print
@@ -380,7 +374,7 @@ for n in range(number_of_generations):
 
     if calls == 0:
         sys.stderr.write("\nERROR! Could not get states from file: %s\n\n"%(init_file))
-        sys.exit()
+        sys.exit(-1)
         
     output_f.close()
 
