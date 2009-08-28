@@ -6,34 +6,73 @@ import os
 import sys
 import gc
 import time
+import threading
 
-## Check for correct number of arguments
-if len(sys.argv) != 4 and len(sys.argv) !=5 :
+def usage():
     print
-    print "Usage:",sys.argv[0]," [-s] <num_generations> <rule_file> <init_file>"
+    print "Usage:",sys.argv[0]," [-s] [-t <num_threads>] <num_generations> <rule_file> <init_file>"
     print "    -s : simplify the probabilities symbolically"
+    print "    -t : use threading and provided number of threads."
     print
     sys.exit()
 
-## Check command-line arguments
+
+## Check for correct number of arguments
+if len(sys.argv) < 4 or len(sys.argv) > 7:
+    usage()
+
+## Check for simplify
 use_simplify = False
-if len(sys.argv) == 5:
-    if sys.argv[1] == "-s":
-        sys.argv.remove("-s")
-        use_simplify = True
+if "-s" in sys.argv:
+    use_simplify = True
+    sys.argv.remove("-s")
+
+use_threads = False
+number_of_threads = 1
+if sys.argv[1][0:2] == "-t":
+    use_threads = True
+    if sys.argv[1][2:] != '':
+        try:
+            number_of_threads = int(sys.argv[1][2:])
+        except:
+            sys.stderr.write("\nERROR! Provided threads not an integer: %s\n\n"%(sys.argv[1][2:]))
+            sys.exit()
+        sys.argv = [sys.argv[0]] + sys.argv[2:]
     else:
-        print
-        print "Usage:",sys.argv[0]," [-s] <num_generations> <rule_file> <init_file>"
-        print "    -s : simplify the probabilities symbolically"
-        print
-        sys.exit()
-number_of_generations = int(sys.argv[1])
+        try:
+            number_of_threads = int(sys.argv[2])
+        except:
+            sys.stderr.write("\nERROR! Provided threads not an integer: %s\n\n"%(sys.argv[2]))
+            sys.exit()
+        sys.argv = [sys.argv[0]] + sys.argv[3:]
+
+if len(sys.argv) != 4:
+    usage()
+
+if number_of_threads < 1:
+    sys.stderr.write("\nERROR! Number of threads must be greater than zero.\n\n")
+    sys.exit()
+        
+number_of_generations = 0
+try :
+    number_of_generations = int(sys.argv[1])
+except:
+    sys.stderr.write("\nERROR! Provided generations not an integer: %s\n\n"%(sys.argv[1]))
+    usage()
+
+if number_of_generations <= 0:
+    sys.stderr.write("\nERROR! Number of generations must be greater than zero.\n\n")
+    sys.exit()
+
 rule_file = sys.argv[2]
 init_file = sys.argv[3]
 
-## Check input
-if number_of_generations < 1:
-    sys.stderr.write("ERROR! Number of generations must be >= 1\n")
+if not os.path.isfile(rule_file):
+    sys.stderr.write("\nERROR! Rules file does not exist: %s\n\n"%(rule_file))
+    sys.exit()
+
+if not os.path.isfile(init_file):
+    sys.stderr.write("\nERROR! Initial state file does not exist: %s\n\n"%(init_file))
     sys.exit()
 
 ## Minimal checking finished --- we are a go!
@@ -66,7 +105,7 @@ class SymbolTable:
         self.symbols = list(set(data))
 
         if len(self.symbols) == 0:
-            sys.stderr.write("\nERROR! No symbols found in file: %s\n"%rule_file)
+            sys.stderr.write("\nERROR! No symbols found in file: %s\n\n"%rule_file)
             return False
 
         ## Symbol inversion table
@@ -188,7 +227,7 @@ class Node:
                     self.state[self.symbol_table.symbols_inv[y]] += 1
                 occupied = True
             except:
-                sys.stderr.write("\nERROR! Invalid symbol in initial state spec: %s\n"%y)
+                sys.stderr.write("\nERROR! Invalid symbol in initial state spec: %s\n\n"%y)
                 self.state = None
                 return None
         if not occupied:
@@ -340,7 +379,7 @@ for n in range(number_of_generations):
             calls += 1
 
     if calls == 0:
-        sys.stderr.write("\nERROR! Could not get states from file: %s\n"%(init_file))
+        sys.stderr.write("\nERROR! Could not get states from file: %s\n\n"%(init_file))
         sys.exit()
         
     output_f.close()
