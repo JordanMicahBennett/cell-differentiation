@@ -233,21 +233,15 @@ class Node:
             print >> outfile,self.tostring()
         return stack_add
 
-## Fills the stack with nodes read from states in a state file
-def populate_stack(stack,symbol_table,state_file):
-    f = open(state_file,'r')
-    stack_count = 0
-    for x in f:
-        new_node = Node(symbol_table)
-        new_node = new_node.fromstring(x)
-        if new_node:
-            stack.append(new_node)
-            stack_count += 1
-    f.close()
-    if stack_count == 0:
-        sys.stderr.write("\nERROR! No states found in file: %s\n"%init_file)
-        return False
-    return True
+## Puts one state on the stack via a nodes read from a state file
+def populate_stack(stack,symbol_table,infile):
+    x = infile.readline()
+    new_node = Node(symbol_table)
+    new_node = new_node.fromstring(x)
+    if new_node:
+        stack.append(new_node)
+        return True
+    return False
 
 ## Reads in each line of a file of sorted states and combines the probabilities
 ## (arithmetic addition) of all states with the same number and type of symbols.
@@ -331,28 +325,25 @@ for n in range(number_of_generations):
     gc.collect()
 
     ## Read previous state file (or initial state file provided) and
-    ## fill the stack with the states.
-    print "Reading state information...",
+    ## fill the stack with the states one at a time (expanding into
+    ## temporary file.)
     gen_start = time.time()
-    if n == 0:
-        if not populate_stack(stack,symbol_table,init_file):
-            sys.exit()
-    else:
-        if not populate_stack(stack,symbol_table,"generation_%03d.txt"%(n)):
-            sys.stderr.write("\nERROR! Could not get states from previous generation: %s\n"%("generation_%03d.txt"%(n)))
-            sys.exit()
-    gen_end = time.time()
-    print "done."
-    print "Time elapsed:",(gen_end - gen_start)
     print "Expanding tree...",
-    gen_start = time.time()
 
-    f = open(".build_tree.%d.%s.dat"%(n,os.getpid()),'w')
+    state_f = open(init_file,'r')
+    output_f = open(".build_tree.%d.%s.dat"%(n,os.getpid()),'w')
+
     calls = 0
-    while len(stack) > 0: 
-        stack.pop().expand(stack,f)
-        calls += 1
-    f.close()
+    while populate_stack(stack,symbol_table,state_f):
+        while len(stack) > 0: 
+            stack.pop().expand(stack,output_f)
+            calls += 1
+
+    if calls == 0:
+        sys.stderr.write("\nERROR! Could not get states from file: %s\n"%(init_file))
+        sys.exit()
+        
+    output_f.close()
 
     gen_end = time.time()
     print "done."
@@ -363,18 +354,19 @@ for n in range(number_of_generations):
     gen_start = time.time()
 
     ## Catalog the current generation
-    f = os.popen("sort .build_tree.%d.%s.dat"%(n,os.getpid()),'r')
+    input_f = os.popen("sort .build_tree.%d.%s.dat"%(n,os.getpid()),'r')
     gen_file = open("generation_%03d.txt"%(n+1),'w')
 
     if symbol_table.use_numeric:
-        simplify_states_numeric(f,gen_file)
+        simplify_states_numeric(input_f,gen_file)
     else:
-        simplify_states_symbolic(f,gen_file,use_simplify)
+        simplify_states_symbolic(input_f,gen_file,use_simplify)
 
-    f.close()
+    input_f.close()
     gen_file.close()
 
     os.remove(".build_tree.%d.%s.dat"%(n,os.getpid()))
+    init_file = "generation_%03d.txt"%(n+1)
 
     gen_end = time.time()
     print "done."
