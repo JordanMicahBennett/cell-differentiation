@@ -7,11 +7,7 @@ import sys
 import gc
 import time
 
-##debug = sys.stdout
-##debug = open("/dev/null",'w')
-
-use_simplify = False
-
+## Check for correct number of arguments
 if len(sys.argv) != 4 and len(sys.argv) !=5 :
     print
     print "Usage:",sys.argv[0]," [-s] <num_generations> <rule_file> <init_file>"
@@ -19,6 +15,8 @@ if len(sys.argv) != 4 and len(sys.argv) !=5 :
     print
     sys.exit()
 
+## Check command-line arguments
+use_simplify = False
 if len(sys.argv) == 5:
     if sys.argv[1] == "-s":
         sys.argv.remove("-s")
@@ -29,11 +27,11 @@ if len(sys.argv) == 5:
         print "    -s : simplify the probabilities symbolically"
         print
         sys.exit()
-        
 number_of_generations = int(sys.argv[1])
 rule_file = sys.argv[2]
 init_file = sys.argv[3]
 
+## Check input
 if number_of_generations < 1:
     sys.stderr.write("ERROR! Number of generations must be >= 1\n")
     sys.exit()
@@ -41,6 +39,8 @@ if number_of_generations < 1:
 ## Minimal checking finished --- we are a go!
 
 ## Symbol table
+## This class holds all information on the symbols, rules, and probabilities
+## used during evaluation.
 class SymbolTable:
     symbols = []
     symbols_inv = dict()
@@ -48,6 +48,7 @@ class SymbolTable:
     rules_inv = dict()
     rules_probabilities = []
     use_numeric = True
+    generic_symbol_number = 1
     def read_rules(self,rule_file):
         ## Read rule file
         f = open(rule_file,'r')
@@ -65,7 +66,7 @@ class SymbolTable:
         self.symbols = list(set(data))
 
         if len(self.symbols) == 0:
-            sys.stderr.write("ERROR! No symbols found in file: %s\n"%rule_file)
+            sys.stderr.write("\nERROR! No symbols found in file: %s\n"%rule_file)
             return False
 
         ## Symbol inversion table
@@ -118,6 +119,12 @@ class SymbolTable:
         return True
 
 ## Node data structure
+## A single node of the tree is stored in this structure.
+## It contains the counts of each symbol in the state it represents,
+## the counts of each symbol that it needs to expand, the counts of each rule
+## that was selected during expansion, the probability drawn from the initial
+## state (or from the previous generation for continued processing,) and
+## a reference to the symbol table used for evaluation.
 class Node:
     state = None
     expandable = None
@@ -150,19 +157,21 @@ class Node:
                     result += "%d*%s "%(self.state[x],self.symbol_table.symbols[x])
                 else:
                     result += "%s "%(self.symbol_table.symbols[x])
-        result += ":"
+        result += ": "
         if (self.symbol_table.use_numeric):
             temp = self.base_prob
             for x in range(len(self.selected)):
                 if self.selected[x] > 0:
                     temp *= pow(self.symbol_table.rules_probabilities[x],self.selected[x])
-            result += " " + str(temp)
+            result += str(temp)
         else:
             result += "%s"%(self.base_prob)
             for x in range(len(self.selected)):
                 if self.selected[x] > 0:
                     if self.state[x] > 1:
                         result += "*%s**%d"%(self.symbol_table.rules_probabilities[x],self.selected[x])
+                    else:
+                        result += "*%s"%(self.symbol_table.rules_probabilities[x])
         return result
     def fromstring(self,input=None):
         if input == None:
@@ -179,14 +188,14 @@ class Node:
                     self.state[self.symbol_table.symbols_inv[y]] += 1
                 occupied = True
             except:
-                sys.stderr.write("ERROR! Invalid symbol in initial state spec: %s\n"%y)
+                sys.stderr.write("\nERROR! Invalid symbol in initial state spec: %s\n"%y)
                 self.state = None
                 return None
         if not occupied:
             self.state = None
             return None
         try:
-            prob = temp[1].rstrip('\n')
+            prob = temp[1].rstrip('\n').replace(' ','')
         except:
             prob = 1
         try:
@@ -224,6 +233,7 @@ class Node:
             print >> outfile,self.tostring()
         return stack_add
 
+## Fills the stack with nodes read from states in a state file
 def populate_stack(stack,symbol_table,state_file):
     f = open(state_file,'r')
     stack_count = 0
@@ -231,14 +241,17 @@ def populate_stack(stack,symbol_table,state_file):
         new_node = Node(symbol_table)
         new_node = new_node.fromstring(x)
         if new_node:
-            stack.appendleft(new_node)
+            stack.append(new_node)
             stack_count += 1
     f.close()
     if stack_count == 0:
-        sys.stderr.write("ERROR! No states found in file: %s\n"%init_file)
+        sys.stderr.write("\nERROR! No states found in file: %s\n"%init_file)
         return False
     return True
 
+## Reads in each line of a file of sorted states and combines the probabilities
+## (arithmetic addition) of all states with the same number and type of symbols.
+## In particular, this function works only on numeric probabilities.
 def simplify_states_numeric(infile,outfile):
     (current_state,current_probability) = infile.readline().rstrip('\n').split(" : ")
     current_probability = float(current_probability)
@@ -251,16 +264,18 @@ def simplify_states_numeric(infile,outfile):
             print >> outfile,current_state,":",current_probability
             current_probability = probability
             current_state = state
-    print >> outfile,current_state,":",current_probability        
+    print >> outfile,current_state,":",current_probability
     
+## Same as above function, but it works solely on symbolic probabilities. The
+## flag "use_simplify" indicates whether to use Sympy to simplify the expressions
+## on each generation (much slower, but probabilities are more compact and final
+## evaluation would be faster.)
 def simplify_states_symbolic(infile,outfile,use_simplify):
     (current_state,current_probability) = infile.readline().rstrip('\n').split(" : ")
-    print current_state,current_probability
     prob_count = 1
     prob_string = '(0.0'
     for line in infile:
         (state,probability) = line.rstrip('\n').split(" : ")
-        print state,probability
         if state == current_state and probability == current_probability:
             prob_count += 1
         elif state == current_state:
@@ -283,20 +298,25 @@ def simplify_states_symbolic(infile,outfile,use_simplify):
             prob_count = 1
             current_state = state
             current_probability = probability
-    prob_string += ")"
+
+    if (prob_count > 1):
+        prob_string += "+%d*%s"%(prob_count,current_probability)
+    else:
+        prob_string += "+%s"%(current_probability)
+        prob_string += ")"
     if (use_simplify):
         prob_string = "(" + str(simplify(prob_string)) + ")"
-    print >> outfile,current_state,":",prob_string
-    
-            
+    print >> outfile,current_state,":",prob_string   
 
+## Functions and data structures defined... let us begin.
+
+## Create symbol table and stack
 symbol_table = SymbolTable()
 stack = deque()
 
-f = open(init_file,'r')
+## Read rules into symbol_table
 if not symbol_table.read_rules(rule_file):
     sys.exit()
-f.close()
 
 ## Extra line
 print
@@ -307,21 +327,27 @@ for n in range(number_of_generations):
     print "Processing Generation",n+1
     print
 
-    ## Read previous state file
+    ## Drop garbage before this generation
+    gc.collect()
+
+    ## Read previous state file (or initial state file provided) and
+    ## fill the stack with the states.
+    print "Reading state information...",
+    gen_start = time.time()
     if n == 0:
         if not populate_stack(stack,symbol_table,init_file):
             sys.exit()
     else:
         if not populate_stack(stack,symbol_table,"generation_%03d.txt"%(n)):
-            sys.stderr.write("ERROR! Could not get states from previous generation: %s\n"%("generation_%03d.txt"%(n)))
+            sys.stderr.write("\nERROR! Could not get states from previous generation: %s\n"%("generation_%03d.txt"%(n)))
             sys.exit()
-        
-    ## Drop garbage before this generation
-    gc.collect()
-
+    gen_end = time.time()
+    print "done."
+    print "Time elapsed:",(gen_end - gen_start)
+    print "Expanding tree...",
     gen_start = time.time()
 
-    f = open(".build_tree.%s.dat"%(os.getpid()),'w')
+    f = open(".build_tree.%d.%s.dat"%(n,os.getpid()),'w')
     calls = 0
     while len(stack) > 0: 
         stack.pop().expand(stack,f)
@@ -329,16 +355,17 @@ for n in range(number_of_generations):
     f.close()
 
     gen_end = time.time()
+    print "done."
     print "Time elapsed:",(gen_end - gen_start)
     print "Expand function called",calls,"times."
 
+    print "Post-processing state information...",
     gen_start = time.time()
 
     ## Catalog the current generation
-    f = os.popen("sort .build_tree.%s.dat"%(os.getpid()),'r')
+    f = os.popen("sort .build_tree.%d.%s.dat"%(n,os.getpid()),'r')
     gen_file = open("generation_%03d.txt"%(n+1),'w')
 
-    print "Build tree was: .build_tree.%s.dat"%(os.getpid())
     if symbol_table.use_numeric:
         simplify_states_numeric(f,gen_file)
     else:
@@ -347,13 +374,12 @@ for n in range(number_of_generations):
     f.close()
     gen_file.close()
 
-    os.remove(".build_tree.%s.dat"%(os.getpid()))
+    os.remove(".build_tree.%d.%s.dat"%(n,os.getpid()))
 
     gen_end = time.time()
-    print "Post-processing time:",(gen_end - gen_start)
+    print "done."
+    print "Time elapsed:",(gen_end - gen_start)
     print
 
 end_time = time.time()
 print "Total elapsed time:",(end_time - init_time)
-
-#debug.close()
