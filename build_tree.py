@@ -7,13 +7,11 @@ import sys
 import getopt
 import gc
 import time
-import threading
 
 def usage():
     print
-    print "Usage:",sys.argv[0]," [-s] [-t <num_threads>]  <num_generations> <rule_file> <init_file>"
+    print "Usage:",sys.argv[0]," [-s] <num_generations> <rule_file> <init_file>"
     print "    -s | --symbolic     : simplify the probabilities symbolically"
-    print "    -t | --threads=     : use threading and provided number of threads."
     print
     sys.exit(-1)
 
@@ -24,7 +22,7 @@ number_of_threads = 1
 
 ## Parse options
 try:
-    opts, args = getopt.getopt(sys.argv[1:],"st:",["symbolic","threads="])
+    opts, args = getopt.getopt(sys.argv[1:],"s",["symbolic"])
 except getopt.GetoptError:
     usage()
 
