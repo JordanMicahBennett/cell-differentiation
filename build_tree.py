@@ -207,7 +207,7 @@ class Node:
     def fromstring(self,input=None):
         if input == None:
             return self
-        temp = input.split(':')
+        temp = input.rstrip('\n').split(':')
         self.state = [0] * len(self.symbol_table.symbols)
         occupied = False
         for y in temp[0].split():
@@ -282,39 +282,41 @@ def populate_list(symbol_table,infile):
         new_node = Node(symbol_table)
         new_node = new_node.fromstring(x)
         if new_node:
-            stack.append(new_node)
+            nodes.append(new_node)
     in_f.close()
     return nodes
 
 ## Outputs the probabilities of each symbol ocurring
 def symbol_count(states,symbol_table,outfile):
+    if len(states) == 0:
+        sys.stderr.write("\n\nERROR! No states generated from last generation!\n\n")
+        sys.exit()
     out_f = open(outfile,'w')
     max_count = 0
-    current_count = 0
+    current_count = 0        
     ## Header info
     for x in symbol_table.symbols:
         print >> out_f,"\"%s\""%(x),
     print >> out_f
     ## Hit it!
     while current_count <= max_count:
-        print >> out_f,current_count
+        print >> out_f,current_count,
         for x in range(len(symbol_table.symbols)):
-            print >> out_f,x,
             if symbol_table.use_numeric:
                 prob = 0
                 for y in states:
-                    if states.state[x] > max_count:
-                        max_count = state.state[x]
-                    if states.state[x] == current_count:
-                        prob += state.base_prob
+                    if y.state[x] > max_count:
+                        max_count = y.state[x]
+                    if y.state[x] == current_count:
+                        prob += y.base_prob
                 print >> out_f,prob,
             else:
                 prob = "0.0"
                 for y in states:
-                    if states.state[x] > max_count:
-                        max_count = state.state[x]
-                    if states.state[x] == current_count:
-                        prob += " + %s",state.base_prob
+                    if y.state[x] > max_count:
+                        max_count = y.state[x]
+                    if y.state[x] == current_count:
+                        prob += " + %s"%(y.base_prob)
                 if (use_simplify):
                     prob = str(simplify(prob))
                 print >> out_f,"\"%s\""%(prob),
