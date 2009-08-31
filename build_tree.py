@@ -11,10 +11,9 @@ import time
 def usage():
     print
     print "Usage:",sys.argv[0]," [-s] <num_generations> <rule_file> <init_file>"
-    print "    -s | --symbolic     : simplify the probabilities symbolically"
+    print "    -s | --symbolic : simplify the probabilities symbolically"
     print
     sys.exit(-1)
-
 
 use_simplify = False
 use_threads = False
@@ -237,9 +236,8 @@ class Node:
         self.expandable = list(self.state)
         self.selected = [0] * len(self.symbol_table.rules)
         return self                
-    def expand(self,stack,outfile):
+    def expand(self,stack,shelf):
         expand = -1
-        stack_add = 0
         for x in range(len(self.expandable)):
             if self.expandable[x] > 0:
                 expand = x
@@ -254,15 +252,20 @@ class Node:
                         n.state[y] += self.symbol_table.rules[x][y]
                     n.selected[x] += 1
                     stack.append(n)
-                    stack_add += 1
             except:
                 self.state[expand] += 1
                 self.expandable[expand] = 0
                 stack.append(self)
                 stack_add += 1
         else:
-            print >> outfile,self.tostring()
-        return stack_add
+            representation = self.tostring().split(" : ")
+            try:
+                current_prob = shelf[representation[0]]
+                
+            except:
+                shelf[representation[0]] = "1*(" + representation[1] + ")"
+
+        return None
 
 ## Puts one state on the stack via a nodes read from a state file
 def populate_stack(stack,symbol_table,infile):
