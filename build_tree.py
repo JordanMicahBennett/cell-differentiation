@@ -318,11 +318,12 @@ def symbol_count(states,symbol_table,outfile):
                     if y.state[x] == current_count:
                         prob += " + %s"%(y.base_prob)
                 if (use_simplify):
-                    prob = str(simplify(prob))
-                print >> out_f,"\"%s\""%(prob),
+                    prob = str(simplify(prob)).replace(' ','')
+                print >> out_f,"\"%s\""%(prob.replace("**","^")),
         print >> out_f
         current_count += 1
-    out_f.close()   
+    out_f.close()
+    return
 
 ## Reads in each line of a file of sorted states and combines the probabilities
 ## (arithmetic addition) of all states with the same number and type of symbols.
