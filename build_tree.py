@@ -274,6 +274,54 @@ def populate_stack(stack,symbol_table,infile):
         return True
     return False
 
+## Puts all states into a list via a nodes read from a state file
+def populate_list(symbol_table,infile):
+    nodes = []
+    in_f = open(infile,'r')
+    for x in in_f:
+        new_node = Node(symbol_table)
+        new_node = new_node.fromstring(x)
+        if new_node:
+            stack.append(new_node)
+    in_f.close()
+    return nodes
+
+## Outputs the probabilities of each symbol ocurring
+def symbol_count(states,symbol_table,outfile):
+    out_f = open(outfile,'w')
+    max_count = 0
+    current_count = 0
+    ## Header info
+    for x in symbol_table.symbols:
+        print >> out_f,"\"%s\""%(x),
+    print >> out_f
+    ## Hit it!
+    while current_count <= max_count:
+        print >> out_f,current_count
+        for x in range(len(symbol_table.symbols)):
+            print >> out_f,x,
+            if symbol_table.use_numeric:
+                prob = 0
+                for y in states:
+                    if states.state[x] > max_count:
+                        max_count = state.state[x]
+                    if states.state[x] == current_count:
+                        prob += state.base_prob
+                print >> out_f,prob,
+            else:
+                prob = "0.0"
+                for y in states:
+                    if states.state[x] > max_count:
+                        max_count = state.state[x]
+                    if states.state[x] == current_count:
+                        prob += " + %s",state.base_prob
+                if (use_simplify):
+                    prob = str(simplify(prob))
+                print >> out_f,"\"%s\""%(prob),
+        print >> out_f
+        current_count += 1
+    out_f.close()   
+
 ## Reads in each line of a file of sorted states and combines the probabilities
 ## (arithmetic addition) of all states with the same number and type of symbols.
 ## In particular, this function works only on numeric probabilities.
@@ -398,6 +446,9 @@ for n in range(number_of_generations):
 
     os.remove(".build_tree.%d.%s.dat"%(n,os.getpid()))
     init_file = "generation_%03d.txt"%(n+1)
+
+    ## Create summary table
+    symbol_count(populate_list(symbol_table,init_file),symbol_table,"generation_%03d_summary.txt"%(n+1))
 
     gen_end = time.time()
     print "done."
