@@ -10,7 +10,7 @@
 ## observed.table - a data frame of observed probabilities
 probability.optmization <- function(prob.env,probability.table,observed.table) {
   result <- simplify.summary(probability.table,prob.env)
-  return (sqrt(mean((result - observered.table)^2)))
+  return (sqrt(mean((result - observed.table)^2)))
 }
 
 ##
