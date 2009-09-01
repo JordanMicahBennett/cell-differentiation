@@ -258,19 +258,25 @@ class Node:
                 self.state[expand] += 1
                 self.expandable[expand] = 0
                 stack.append(self)
-                stack_add += 1
         else:
             representation = self.tostring().split(" : ")
-            try:
-                prob_dict = cPickle.loads(shelf[representation[0]])
+            if symbol_table.use_numeric:
                 try:
-                    prob_dict[representation[1]] += 1
+                    prob = shelf[representation[0]]
+                    prob += float(representation[1])
+                    shelf[representation[0]] = prob
                 except:
-                    prob_dict[representation[1]] = 1
-            except:
-                prob_dict = { representation[1] : 1 }
-            shelf[representation[0]] = cPickle.dumps(prob_dict)
-
+                    shelf[representation[0]] = float(representation[1])
+            else:
+                try:
+                    prob_dict = cPickle.loads(shelf[representation[0]])
+                    try:
+                        prob_dict[representation[1]] += 1
+                    except:
+                        prob_dict[representation[1]] = 1
+                except:
+                    prob_dict = { representation[1] : 1 }
+                shelf[representation[0]] = cPickle.dumps(prob_dict)
         return None
 
 ## Puts one state on the stack via a nodes read from a state file
@@ -338,11 +344,7 @@ def symbol_count(states,symbol_table,outfile):
 ## (arithmetic addition) of all states with the same number and type of symbols.
 ## In particular, this function works only on numeric probabilities.
 def simplify_states_numeric(shelf,outfile):
-    for state,value_dict in shelf.items():
-        prob_dict = cPickle.loads(value_dict)
-        probability = 0.0
-        for key_prob,value_count in prob_dict.items():
-            probability += float(key_prob)*value_count
+    for state,probability in shelf.items():
         print >> outfile,state,":",probability
     
 ## Same as above function, but it works solely on symbolic probabilities. The
@@ -391,12 +393,12 @@ for n in range(number_of_generations):
     gen_start = time.time()
     print "Expanding tree...",
 
-    gen_shelf = shelve.open(".generation_%03d.dat"%(n,os.getpid()))
+    gen_shelf = shelve.open(".generation_%03d.%d.dat"%(n+1,os.getpid()))
     state_f = open(init_file,'r')
     calls = 0
     while populate_stack(stack,symbol_table,state_f):
         while len(stack) > 0: 
-            stack.pop().expand(stack,output_shelf)
+            stack.pop().expand(stack,gen_shelf)
             calls += 1
 
     if calls == 0:
@@ -423,7 +425,7 @@ for n in range(number_of_generations):
 
     gen_file.close()
     gen_shelf.close()
-    os.remove(".generation.%03d.dat"%(n))
+    os.remove(".generation_%03d.%d.dat"%(n+1,os.getpid()))
 
     init_file = "generation_%03d.txt"%(n+1)
 
