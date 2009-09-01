@@ -199,7 +199,7 @@ class Node:
             result += "%s"%(self.base_prob)
             for x in range(len(self.selected)):
                 if self.selected[x] > 0:
-                    if self.state[x] > 1:
+                    if self.selected[x] > 1:
                         result += "*%s**%d"%(self.symbol_table.rules_probabilities[x],self.selected[x])
                     else:
                         result += "*%s"%(self.symbol_table.rules_probabilities[x])

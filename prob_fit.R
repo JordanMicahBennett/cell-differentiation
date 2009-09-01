@@ -16,7 +16,7 @@ read.summary <- function(filename) {
 
 ## Creates a list of probabilities for evaluation later
 probability.env <- function(probabilities,probability.names=sprintf("P%d",seq(1,length(probabilities)))) {
-  data <- list(probabilities)
+  data <- as.list(probabilities)
   names(data) <- probability.names
   return (data)
 }
