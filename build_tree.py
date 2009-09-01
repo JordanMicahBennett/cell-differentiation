@@ -262,10 +262,14 @@ class Node:
         else:
             representation = self.tostring().split(" : ")
             try:
-                current_prob = shelf[representation[0]]
-                
+                prob_dict = cPickle.loads(shelf[representation[0]])
+                try:
+                    prob_dict[representation[1]] += 1
+                except:
+                    prob_dict[representation[1]] = 1
             except:
-                shelf[representation[0]] = "1*(" + representation[1] + ")"
+                prob_dict = { representation[1] : 1 }
+            shelf[representation[0]] = cPickle.dumps(prob_dict)
 
         return None
 
@@ -330,64 +334,34 @@ def symbol_count(states,symbol_table,outfile):
     out_f.close()
     return
 
-## Reads in each line of a file of sorted states and combines the probabilities
+## Reads in each item in a dictionay state:dict and combines the probabilities
 ## (arithmetic addition) of all states with the same number and type of symbols.
 ## In particular, this function works only on numeric probabilities.
-def simplify_states_numeric(infile,outfile):
-    (current_state,current_probability) = infile.readline().rstrip('\n').split(" : ")
-    current_probability = float(current_probability)
-    for line in infile:
-        (state,probability) = line.rstrip('\n').split(" : ")
-        probability = float(probability)
-        if state == current_state:
-            current_probability += probability
-        else:
-            print >> outfile,current_state,":",current_probability
-            current_probability = probability
-            current_state = state
-    print >> outfile,current_state,":",current_probability
+def simplify_states_numeric(shelf,outfile):
+    for state,value_dict in shelf.items():
+        prob_dict = cPickle.loads(value_dict)
+        probability = 0.0
+        for key_prob,value_count in prob_dict.items():
+            probability += float(key_prob)*value_count
+        print >> outfile,state,":",probability
     
 ## Same as above function, but it works solely on symbolic probabilities. The
 ## flag "use_simplify" indicates whether to use Sympy to simplify the expressions
 ## on each generation (much slower, but probabilities are more compact and final
 ## evaluation would be faster.)
-def simplify_states_symbolic(infile,outfile,use_simplify):
-    (current_state,current_probability) = infile.readline().rstrip('\n').split(" : ")
-    prob_count = 1
-    prob_string = '(0.0'
-    for line in infile:
-        (state,probability) = line.rstrip('\n').split(" : ")
-        if state == current_state and probability == current_probability:
-            prob_count += 1
-        elif state == current_state:
-            if (prob_count > 1):
-                prob_string += "+%d*%s"%(prob_count,current_probability)
+def simplify_states_symbolic(shelf,outfile,use_simplify):
+    for state,value_dict in shelf.items():
+        prob_dict = cPickle.loads(value_dict)
+        probability = "(0.0"
+        for key_prob,value_count in prob_dict.items():
+            if value_count > 1:
+                probability += "+%d*(%s)"%(value_count,key_prob)
             else:
-                prob_string += "+%s"%(current_probability)
-            prob_count = 1
-            current_probability = probability
-        else:
-            if (prob_count > 1):
-                prob_string += "+%d*%s"%(prob_count,current_probability)
-            else:
-                prob_string += "+%s"%(current_probability)
-            prob_string += ")"
-            if (use_simplify):
-                prob_string = "(" + str(simplify(prob_string)) + ")"
-            print >> outfile,current_state,":",prob_string
-            prob_string = '(0.0'
-            prob_count = 1
-            current_state = state
-            current_probability = probability
-
-    if (prob_count > 1):
-        prob_string += "+%d*%s"%(prob_count,current_probability)
-    else:
-        prob_string += "+%s"%(current_probability)
-        prob_string += ")"
-    if (use_simplify):
-        prob_string = "(" + str(simplify(prob_string)) + ")"
-    print >> outfile,current_state,":",prob_string   
+                probability += "+(%s)"%(key_prob)
+        probability += ")"
+        if (use_simplify):
+            probability = "(" + str(simplify(probability)) + ")"
+        print >> outfile,state,":",probability
 
 ## Functions and data structures defined... let us begin.
 
@@ -421,18 +395,16 @@ for n in range(number_of_generations):
     state_f = open(init_file,'r')
     calls = 0
     while populate_stack(stack,symbol_table,state_f):
-        output_shelf = shelve.open(".build_tree.%d.%s.dat"%(n,os.getpid()),'w')
         while len(stack) > 0: 
             stack.pop().expand(stack,output_shelf)
             calls += 1
-        output_f.close()
 
     if calls == 0:
         sys.stderr.write("\nERROR! Could not get states from file: %s\n\n"%(init_file))
+        gen_shelf.close()
+        os.remove(".generation.%03d.dat"%(n))
         sys.exit(-1)
         
-    output_f.close()
-
     gen_end = time.time()
     print "done."
     print "Time elapsed:",(gen_end - gen_start)
@@ -442,18 +414,17 @@ for n in range(number_of_generations):
     gen_start = time.time()
 
     ## Catalog the current generation
-    input_f = os.popen("sort .build_tree.%d.%s.dat"%(n,os.getpid()),'r')
     gen_file = open("generation_%03d.txt"%(n+1),'w')
 
     if symbol_table.use_numeric:
-        simplify_states_numeric(input_f,gen_file)
+        simplify_states_numeric(gen_shelf,gen_file)
     else:
-        simplify_states_symbolic(input_f,gen_file,use_simplify)
+        simplify_states_symbolic(gen_shelf,gen_file,use_simplify)
 
-    input_f.close()
     gen_file.close()
+    gen_shelf.close()
+    os.remove(".generation.%03d.dat"%(n))
 
-    os.remove(".build_tree.%d.%s.dat"%(n,os.getpid()))
     init_file = "generation_%03d.txt"%(n+1)
 
     ## Create summary table
