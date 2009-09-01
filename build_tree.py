@@ -7,7 +7,6 @@ import sys
 import getopt
 import gc
 import time
-import cPickle
 import shelve
 
 def usage():
@@ -269,14 +268,14 @@ class Node:
                     shelf[representation[0]] = float(representation[1])
             else:
                 try:
-                    prob_dict = cPickle.loads(shelf[representation[0]])
+                    prob_dict = shelf[representation[0]]
                     try:
                         prob_dict[representation[1]] += 1
                     except:
                         prob_dict[representation[1]] = 1
                 except:
                     prob_dict = { representation[1] : 1 }
-                shelf[representation[0]] = cPickle.dumps(prob_dict)
+                shelf[representation[0]] = prob_dict
         return None
 
 ## Puts one state on the stack via a nodes read from a state file
@@ -353,7 +352,7 @@ def simplify_states_numeric(shelf,outfile):
 ## evaluation would be faster.)
 def simplify_states_symbolic(shelf,outfile,use_simplify):
     for state,value_dict in shelf.items():
-        prob_dict = cPickle.loads(value_dict)
+        prob_dict = value_dict
         probability = "(0.0"
         for key_prob,value_count in prob_dict.items():
             if value_count > 1:
