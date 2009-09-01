@@ -7,6 +7,8 @@ import sys
 import getopt
 import gc
 import time
+import cPickle
+import shelve
 
 def usage():
     print
@@ -416,7 +418,7 @@ for n in range(number_of_generations):
     print "Expanding tree...",
 
     state_f = open(init_file,'r')
-    output_f = open(".build_tree.%d.%s.dat"%(n,os.getpid()),'w')
+    shelf = shelve.open(".build_tree.%d.%s.dat"%(n,os.getpid()))
 
     calls = 0
     while populate_stack(stack,symbol_table,state_f):
