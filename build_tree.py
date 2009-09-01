@@ -417,14 +417,15 @@ for n in range(number_of_generations):
     gen_start = time.time()
     print "Expanding tree...",
 
+    gen_shelf = shelve.open(".generation_%03d.dat"%(n,os.getpid()))
     state_f = open(init_file,'r')
-    shelf = shelve.open(".build_tree.%d.%s.dat"%(n,os.getpid()))
-
     calls = 0
     while populate_stack(stack,symbol_table,state_f):
+        output_shelf = shelve.open(".build_tree.%d.%s.dat"%(n,os.getpid()),'w')
         while len(stack) > 0: 
-            stack.pop().expand(stack,output_f)
+            stack.pop().expand(stack,output_shelf)
             calls += 1
+        output_f.close()
 
     if calls == 0:
         sys.stderr.write("\nERROR! Could not get states from file: %s\n\n"%(init_file))
