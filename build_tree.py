@@ -8,6 +8,7 @@ import getopt
 import gc
 import time
 import shelve
+import commands
 
 def usage():
     print
@@ -390,12 +391,18 @@ for n in range(number_of_generations):
     ## fill the stack with the states one at a time (expanding into
     ## temporary file.)
     gen_start = time.time()
-    print "Expanding tree...",
+    print "Expanding tree..."
 
     gen_shelf = shelve.open(".generation_%03d.%d.dat"%(n+1,os.getpid()))
+
+    state_file_size = int(commands.getoutput("wc -l %s"%(init_file)).split()[0])
+    state_file_count = 0
     state_f = open(init_file,'r')
     calls = 0
     while populate_stack(stack,symbol_table,state_f):
+        state_file_count += 1
+        print "Progress: %4.1f %% \r"%(state_file_count * (100.0 / state_file_size)),
+        sys.stdout.flush()
         while len(stack) > 0: 
             stack.pop().expand(stack,gen_shelf)
             calls += 1
@@ -407,7 +414,7 @@ for n in range(number_of_generations):
         sys.exit(-1)
         
     gen_end = time.time()
-    print "done."
+    print
     print "Time elapsed:",(gen_end - gen_start)
     print "Expand function called",calls,"times."
 
