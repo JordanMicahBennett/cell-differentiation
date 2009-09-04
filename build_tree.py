@@ -12,8 +12,9 @@ import commands
 
 def usage():
     print
-    print "Usage:",sys.argv[0]," [-s] <num_generations> <rule_file> <init_file>"
+    print "Usage:",sys.argv[0]," [-s] [-e <epsilon>] <num_generations> <rule_file> <init_file>"
     print "    -s | --symbolic : simplify the probabilities symbolically"
+    print "    -e | --epsilon= : provide numerical cutoff for probabilities"
     print
     sys.exit(-1)
 
@@ -21,9 +22,14 @@ use_simplify = False
 use_threads = False
 number_of_threads = 1
 
+## Calculate default epsilon - to machine precision
+epsilon = 1
+while epsilon / 2.0  + 1.0 > 1.0:
+    epsilon = epsilon / 2.0
+
 ## Parse options
 try:
-    opts, args = getopt.getopt(sys.argv[1:],"s",["symbolic"])
+    opts, args = getopt.getopt(sys.argv[1:],"se:",["symbolic","epsilon="])
 except getopt.GetoptError:
     usage()
 
@@ -37,6 +43,24 @@ for opt,arg in opts:
         except:
             sys.stderr.write("\nERROR! Provided threads not an integer: %s\n\n"%(arg))
             sys.exit(-1)
+    elif opt in ("-e","--epsilon"):
+        try:
+            new_epsilon = float(arg)
+        except:
+            sys.stderr.write("\nERROR! Provided epsilon not an real value: %s\n\n"%(arg))
+            sys.exit(-1)
+        if new_epsilon <= 0.0:
+            sys.stderr.write("\nERROR! Epsilon must be a positive value.\n\n")
+            sys.exit(-1)
+            
+        elif new_epsilon < epsilon:
+            sys.stderr.write("\nWARNING! Provided epsilon is less than machine precision: %s\n\n"%(arg))
+        elif new_epsilon >= 1.0:
+            sys.stderr.write("\nERROR! Epsilon must be less than one.\n\n")
+            sys.exit(-1)
+        epsilon = new_epsilon
+            
+        
 
 if use_threads and number_of_threads < 1:
     sys.stderr.write("\nERROR! Number of threads must be greater than zero.\n\n")
