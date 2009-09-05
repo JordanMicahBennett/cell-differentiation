@@ -13,7 +13,7 @@ import commands
 def usage():
     print
     print "Usage:",sys.argv[0]," [-s] [-e <epsilon>] <num_generations> <rule_file> <init_file>"
-    print "    -s | --symbolic : simplify the probabilities symbolically"
+    print "    -s | --simplify : simplify the probabilities symbolically"
     print "    -e | --epsilon= : provide numerical cutoff for probabilities"
     print
     sys.exit(-1)
@@ -29,12 +29,12 @@ while epsilon / 2.0  + 1.0 > 1.0:
 
 ## Parse options
 try:
-    opts, args = getopt.getopt(sys.argv[1:],"se:",["symbolic","epsilon="])
+    opts, args = getopt.getopt(sys.argv[1:],"se:",["simplify","epsilon="])
 except getopt.GetoptError:
     usage()
 
 for opt,arg in opts:
-    if opt in ("-s","--symbolic"):
+    if opt in ("-s","--simplify"):
         use_simplify = True
     elif opt in ("-t","--threads"):
         use_threads = True
