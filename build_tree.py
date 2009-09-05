@@ -333,13 +333,14 @@ def symbol_count(states,symbol_table,outfile):
         sys.exit()
     out_f = open(outfile,'w')
     max_count = 0
-    current_count = 0        
+    current_count = 0
     ## Header info
     for x in symbol_table.symbols:
         print >> out_f,"\"%s\""%(x),
     print >> out_f
     ## Hit it!
     while current_count <= max_count:
+        print "Progress: %4.1f %% \r"%(current_count * (100.0 / (max_count + 1))),
         print >> out_f,current_count,
         for x in range(len(symbol_table.symbols)):
             if symbol_table.use_numeric:
@@ -363,21 +364,30 @@ def symbol_count(states,symbol_table,outfile):
         print >> out_f
         current_count += 1
     out_f.close()
+    print "Progress: %4.1f %% \r"%(100.0),
     return
 
 ## Reads in each item in a dictionay state:dict and combines the probabilities
 ## (arithmetic addition) of all states with the same number and type of symbols.
 ## In particular, this function works only on numeric probabilities.
 def simplify_states_numeric(shelf,outfile):
+    shelf_size = len(shelf)+1
+    shelf_count = 1
     for state,probability in shelf.items():
+        print "Progress: %4.1f %% \r"%(shelf_count * (100.0 / (shelf_size + 1))),
         print >> outfile,state,":",probability
+        shelf_count += 1
+    print "Progress: %4.1f %% \r"%(100.0),
     
 ## Same as above function, but it works solely on symbolic probabilities. The
 ## flag "use_simplify" indicates whether to use Sympy to simplify the expressions
 ## on each generation (much slower, but probabilities are more compact and final
 ## evaluation would be faster.)
 def simplify_states_symbolic(shelf,outfile,use_simplify):
+    shelf_size = len(shelf)+1
+    shelf_count = 1
     for state,value_dict in shelf.items():
+        print "Progress: %4.1f %% \r"%(shelf_count * (100.0 / (shelf_size + 1))),
         prob_dict = value_dict
         probability = "(0.0"
         for key_prob,value_count in prob_dict.items():
@@ -389,6 +399,8 @@ def simplify_states_symbolic(shelf,outfile,use_simplify):
         if (use_simplify):
             probability = "(" + str(simplify(probability)) + ")"
         print >> outfile,state,":",probability
+        shelf_count += 1
+    print "Progress: %4.1f %% \r"%(100.0),
 
 ## Functions and data structures defined... let us begin.
 
@@ -412,60 +424,78 @@ for n in range(number_of_generations):
     ## Drop garbage before this generation
     gc.collect()
 
+    gen_start = time.time()
+
     ## Read previous state file (or initial state file provided) and
     ## fill the stack with the states one at a time (expanding into
     ## temporary file.)
-    gen_start = time.time()
+    event_start = time.time()
     print "Expanding tree..."
 
-    gen_shelf = shelve.open(".generation_%03d.%d.dat"%(n+1,os.getpid()))
+    try:
+        gen_shelf = shelve.open(".generation_%03d.%d.dat"%(n+1,os.getpid()))
 
-    state_file_size = int(commands.getoutput("wc -l %s"%(init_file)).split()[0])
-    state_file_count = 0
-    state_f = open(init_file,'r')
-    calls = 0
-    while populate_stack(stack,symbol_table,state_f):
-        state_file_count += 1
-        print "Progress: %4.1f %% \r"%(state_file_count * (100.0 / state_file_size)),
-        sys.stdout.flush()
-        while len(stack) > 0: 
-            stack.pop().expand(stack,gen_shelf)
-            calls += 1
+        state_file_size = int(commands.getoutput("wc -l %s"%(init_file)).split()[0])
+        state_file_count = 1
+        state_f = open(init_file,'r')
+        calls = 0
+        while populate_stack(stack,symbol_table,state_f):
+            print "Progress: %4.1f %% \r"%(state_file_count * (100.0 / (state_file_size + 1))),
+            sys.stdout.flush()
+            while len(stack) > 0: 
+                stack.pop().expand(stack,gen_shelf)
+                calls += 1
+            state_file_count += 1
+        print "Progress: %4.1f %% \r"%(100.0),
 
-    if calls == 0:
-        sys.stderr.write("\nERROR! Could not get states from file: %s\n\n"%(init_file))
-        gen_shelf.close()
-        os.remove(".generation.%03d.dat"%(n))
-        sys.exit(-1)
+        if calls == 0:
+            sys.stderr.write("\nERROR! Could not get states from file: %s\n\n"%(init_file))
+            gen_shelf.close()
+            os.remove(".generation.%03d.dat"%(n))
+            sys.exit(-1)
         
-    gen_end = time.time()
-    print
-    print "Time elapsed:",(gen_end - gen_start)
-    print "Expand function called",calls,"times."
+        event_end = time.time()
+        print
+        print "Time elapsed:",(event_end - event_start)
+        print "Expand function called",calls,"times."
 
-    print "Post-processing state information...",
-    gen_start = time.time()
+        print "Post-processing state information..."
+        event_start = time.time()
 
-    ## Catalog the current generation
-    gen_file = open("generation_%03d.txt"%(n+1),'w')
+        ## Catalog the current generation
+        gen_file = open("generation_%03d.txt"%(n+1),'w')
 
-    if symbol_table.use_numeric:
-        simplify_states_numeric(gen_shelf,gen_file)
-    else:
-        simplify_states_symbolic(gen_shelf,gen_file,use_simplify)
+        if symbol_table.use_numeric:
+            simplify_states_numeric(gen_shelf,gen_file)
+        else:
+            simplify_states_symbolic(gen_shelf,gen_file,use_simplify)
 
-    gen_file.close()
-    gen_shelf.close()
-    os.remove(".generation_%03d.%d.dat"%(n+1,os.getpid()))
+        gen_file.close()
+        gen_shelf.close()
+
+        os.remove(".generation_%03d.%d.dat"%(n+1,os.getpid()))
+
+    except:
+        os.remove(".generation_%03d.%d.dat"%(n+1,os.getpid()))
+        sys.exit(-1)
+
 
     init_file = "generation_%03d.txt"%(n+1)
+
+    event_end = time.time()
+    print
+    print "Time elapsed:",(event_end - event_start)
+    print "Processing summary information..."
+    event_start = time.time()
 
     ## Create summary table
     symbol_count(populate_list(symbol_table,init_file),symbol_table,"generation_%03d_summary.txt"%(n+1))
 
+    event_end = time.time()
     gen_end = time.time()
-    print "done."
-    print "Time elapsed:",(gen_end - gen_start)
+    print
+    print "Time elapsed:",(event_end - event_start)
+    print "Time for this generation:",(gen_end - gen_start)
     print
 
 end_time = time.time()
