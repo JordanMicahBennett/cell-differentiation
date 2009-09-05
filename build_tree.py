@@ -138,7 +138,7 @@ class SymbolTable:
             try:
                 prob = temp[1].replace(' ','').rstrip('\n')
                 if prob:
-                    rule_probs.append(prob)
+                    rule_probs.append("("+prob+")")
                 else:
                     rule_probs.append("P%d"%len(self.rules))
             except:
@@ -163,13 +163,14 @@ class SymbolTable:
                     
         ## Are we using numbers or self.symbols for probabilities?
         self.use_numeric = True
-        try:
-            for x in range(len(rule_probs)):
-                self.rules_probabilities.append(float(rule_probs[x]))
-        except:
-            self.rules_probabilities = rule_probs
-            self.use_numeric = False
-            del rule_probs
+        for x in range(len(rule_probs)):
+            temp = str(simplify(rule_probs[x]))
+            try:
+                self.rules_probabilities.append(float(temp))
+            except:
+                self.rules_probabilities.append("("+temp+")")
+                self.use_numeric = False
+        del rule_probs
 
         ## Success!!
         return True
