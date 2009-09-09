@@ -168,7 +168,7 @@ class SymbolTable:
         ## Are we using numbers or self.symbols for probabilities?
         self.use_numeric = True
         for x in range(len(rule_probs)):
-            temp = str(simplify(rule_probs[x]))
+            temp = str(simplify(rule_probs[x])).replace(' ','')
             try:
                 self.rules_probabilities.append(float(temp))
             except:
@@ -316,18 +316,70 @@ def multiply(base_prob_dict,prob_dict,result_dict):
                 result_dict[dump(sum_prob(base_prob,new_prob))] += base_count * new_count
             except:
                 result_dict[dump(sum_prob(base_prob,new_prob))] = base_count * new_count                
-
 ## Print states to a file
 def print_states(shelf,symbol_table,filename):
-    f = open(filename,'w')
+    out_f = open(filename,'w')
+    max_count = len(shelf)+1
+    current_count = 0
     if use_simplify:
         for state,prob_dict in shelf.iteritems():
-            print >> f,symbol_table.state_to_string(load(state)),':',simplify(symbol_table.probability_dict_to_string(load(prob_dict)))
+            print "Progress: %4.1f %% \r"%(current_count * (100.0 / max_count)),
+            sys.stdout.flush()
+            print >> out_f,symbol_table.state_to_string(load(state)),':',str(simplify(symbol_table.probability_dict_to_string(load(prob_dict)))).replace(' ','').replace('**','^')
+            current_count += 1
     else:
         for state,prob_dict in shelf.iteritems():
-            print >> f,symbol_table.state_to_string(load(state)),':',symbol_table.probability_dict_to_string(load(prob_dict))
+            print "Progress: %4.1f %% \r"%(current_count * (100.0 / max_count)),
+            sys.stdout.flush()
+            print >> out_f,symbol_table.state_to_string(load(state)),':',symbol_table.probability_dict_to_string(load(prob_dict)).replace('**','^')
+            current_count += 1
+    print "Progress: %4.1f %% \r"%(100.0),
+    sys.stdout.flush()
+    out_f.close()
+    return
 
-    f.close()
+## Print state summary information
+def print_summary(shelf,symbol_table,filename):
+    out_f = open(filename,'w')
+    max_count = 0
+    current_count = 0
+    ## Header
+    for x in symbol_table.symbols:
+        print >> out_f,"\"%s\""%(x),
+    print >> out_f
+    # Hit it!
+    while current_count <= max_count:
+        print "Progress: %4.1f %% \r"%(current_count * (100.0 / (max_count + 1))),
+        sys.stdout.flush()
+        print >> out_f,current_count,
+        ## Data structures
+        sym_dict = []
+        for x in range(len(symbol_table.symbols)):
+            sym_dict.append(dict())
+        for state,prob_dict in shelf.iteritems():
+            state = load(state)
+            prob_dict = load(prob_dict)
+            for x in range(len(symbol_table.symbols)):
+                if state[x] > max_count:
+                    max_count = state[x]
+                if state[x] == current_count:
+                    for prob,count in prob_dict.iteritems():
+                        try:
+                            sym_dict[x][prob] += count
+                        except:
+                            sym_dict[x][prob] = count
+        if use_simplify:
+            for x in range(len(symbol_table.symbols)):
+                print >> out_f,"\"%s\""%(str(simplify(symbol_table.probability_dict_to_string(sym_dict[x]))).replace(' ','').replace('**','^')),
+        else:
+            for x in range(len(symbol_table.symbols)):
+                print >> out_f,"\"%s\""%(symbol_table.probability_dict_to_string(sym_dict[x]).replace('**','^')),
+        print >> out_f
+        current_count += 1
+    out_f.close()
+    print "Progress: %4.1f %% \r"%(100.0),
+    sys.stdout.flush()
+    return
 
 ## Functions and data structures defined... let us begin.
 
@@ -411,8 +463,6 @@ for n in range(number_of_generations):
     ## Catalog the current generation
     print_states(gen_shelf,symbol_table,'generation_%03d.txt'%(n+1))
     
-    last_gen = gen_shelf
-
     event_end = time.time()
     print
     print 'Time elapsed:',(event_end - event_start)
@@ -420,7 +470,7 @@ for n in range(number_of_generations):
     event_start = time.time()
 
     ## Create summary table
-#    symbol_count(populate_list(symbol_table,init_file),symbol_table,'generation_%03d_summary.txt'%(n+1))
+    print_summary(gen_shelf,symbol_table,'generation_%03d_summary.txt'%(n+1))
 
     event_end = time.time()
     gen_end = time.time()
@@ -428,6 +478,9 @@ for n in range(number_of_generations):
     print 'Time elapsed:',(event_end - event_start)
     print 'Time for this generation:',(gen_end - gen_start)
     print
+
+    ## Promote to next generation
+    last_gen = gen_shelf
 
 end_time = time.time()
 print 'Total elapsed time:',(end_time - init_time)
