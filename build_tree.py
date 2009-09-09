@@ -203,6 +203,7 @@ class Node:
         return (self.symbol_table.state_to_string(self.state) + ' : ' + 
                 self.symbol_table.probability_to_string(self.selected),1)
     def expand(self,stack,shelf):
+        print "Expand for:",self.to_string()
         expand = -1
         for x in range(len(self.expandable)):
             if self.expandable[x] > 0:
@@ -263,7 +264,7 @@ def multiply(base_prob_dict,prob_dict,result_dict):
                 result_dict[dump(sum_prob(base_prob,new_prob))] = base_count * new_count                
 ## Integrate two dictionaries
 def integrate(dest_shelf,src_shelf):
-    for state,src_prob_dict in sre_shelf.iteritems():
+    for state,src_prob_dict in src_shelf.iteritems():
         src_prob_dict = load(src_prob_dict)
         try:
             dest_prob_dict = dest_shelf[state]
@@ -275,7 +276,7 @@ def integrate(dest_shelf,src_shelf):
             except:
                 dest_count = 0
             dest_prob_dict[src_prob] = dest_count + src_count
-        dest_shelf[state] = dest_prob_dict
+        dest_shelf[state] = dump(dest_prob_dict)
 
 ## Print states to a file
 def print_states(shelf,symbol_table,filename):
@@ -434,6 +435,8 @@ if mpi_rank == 0:
         print 'Processing Generation',n+1
         print
 
+        gen_shelf = dict()
+
         ## Drop garbage before this generation
         gc.collect()
 
@@ -444,8 +447,6 @@ if mpi_rank == 0:
         ## temporary file.)
         event_start = time.time()
         print 'Expanding tree...'
-
-        gen_shelf = dict()
 
         ## Send out work
         gen_size = len(last_gen) + 1
@@ -578,12 +579,23 @@ else:
         if message == 'EXPAND':
             sys.stdout.write('Process %d expanding.....\n'%(mpi_rank))
             state = comm.recv(source=0,tag=3)
-            base_prob_dict = comm.recv(source=0,tag=4)
+            base_prob_dict = load(comm.recv(source=0,tag=4))
 
+            state_shelf = dict()
             stack.append(Node(load(state),symbol_table))
 
             while len(stack) > 0:
-                
+                stack.pop().expand(stack,state_shelf)
+
+            ## Filter results back to generation results by multiplication
+            for new_state,prob_dict in state_shelf.iteritems():
+                try:
+                    result = load(gen_shelf[new_state])
+                except:
+                    result = dict()
+                multiply(base_prob_dict,load(prob_dict),result)
+                gen_shelf[new_state] = dump(result)    
+
         elif message == 'COMBINE':
             sys.stdout.write('Process %d combining.....\n'%(mpi_rank))
             comm.send(gen_shelf,dest=0,tag=3)
