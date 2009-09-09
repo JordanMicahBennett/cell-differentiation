@@ -43,7 +43,6 @@ def usage():
     print
     rootexit()
 
-
 ## Symbol table
 ## This class holds all information on the symbols, rules, and probabilities
 ## used during evaluation.
@@ -262,6 +261,22 @@ def multiply(base_prob_dict,prob_dict,result_dict):
                 result_dict[dump(sum_prob(base_prob,new_prob))] += base_count * new_count
             except:
                 result_dict[dump(sum_prob(base_prob,new_prob))] = base_count * new_count                
+## Integrate two dictionaries
+def integrate(dest_shelf,src_shelf):
+    for state,src_prob_dict in sre_shelf.iteritems():
+        src_prob_dict = load(src_prob_dict)
+        try:
+            dest_prob_dict = dest_shelf[state]
+        except:
+            dest_prob_dict = dict()
+        for src_prob,src_count in src_prob_dict.iteritems():
+            try:
+                dest_count = dest_prob_dict[src_prob]
+            except:
+                dest_count = 0
+            dest_prob_dict[src_prob] = dest_count + src_count
+        dest_shelf[state] = dest_prob_dict
+
 ## Print states to a file
 def print_states(shelf,symbol_table,filename):
     out_f = open(filename,'w')
@@ -439,6 +454,8 @@ if mpi_rank == 0:
         working = set()
         for state,base_prob_dict in last_gen.iteritems():
 
+            gc.collect()
+
             print 'Sending Progress: %4.1f %% \r'%(gen_count * (100.0 / gen_size)),
             sys.stdout.flush()
 
@@ -458,6 +475,8 @@ if mpi_rank == 0:
         ## Gather all results
         while len(working) > 0:
 
+            gc.collect()
+
             print 'Gathering Progress: %4.1f %% \r'%(gen_count * (100.0 / gen_size)),
 
             while 1:
@@ -468,11 +487,12 @@ if mpi_rank == 0:
                 sleeping = sleeping.union([dest])
                 
             comm.send('COMBINE',dest=dest,tag=2)
-            prob_dict = comm.recv(source=dest,tag=3)
+            proc_dict = comm.recv(source=dest,tag=3)
             working.remove(dest)
 
-            ## Integrate
-            
+            ## Integrate process results into this dictionary
+            integrate(gen_shelf,proc_dict)
+                
             gen_count += 1
 
         for x in sleeping:
@@ -541,8 +561,9 @@ else:
 
     sys.stdout.write('Process %d runs.....\n'%(mpi_rank))
     
-    ## Make a stack
+    ## Make a stack and a generation shelf
     stack = deque()
+    gen_shelf = dict()
 
     while 1:
         ## Clean up
@@ -558,9 +579,15 @@ else:
             sys.stdout.write('Process %d expanding.....\n'%(mpi_rank))
             state = comm.recv(source=0,tag=3)
             base_prob_dict = comm.recv(source=0,tag=4)
+
+            stack.append(Node(load(state),symbol_table))
+
+            while 
         elif message == 'COMBINE':
             sys.stdout.write('Process %d combining.....\n'%(mpi_rank))
-            comm.send(None,dest=0,tag=3)
+
+            comm.send(gen_shelf,dest=0,tag=3)
+            gen_shelf = dict()
         elif message == 'WAIT':
             sys.stdout.write('Process %d waiting.....\n'%(mpi_rank))
             message = comm.recv(source=0,tag=3)
