@@ -376,7 +376,7 @@ if mpi_rank == 0:
         number_of_generations = int(args[0])
     except:
         sys.stderr.write('\nERROR! Provided generations not an integer: %s\n\n'%(sys.argv[1]))
-        usage()
+        rootexit()
 
     if number_of_generations <= 0:
         sys.stderr.write('\nERROR! Number of generations must be greater than zero.\n\n')
@@ -435,6 +435,8 @@ if mpi_rank == 0:
         ## Send out work
         gen_size = len(last_gen) + 1
         gen_count = 1
+        procs = set(range(1,mpi_size))
+        working = set()
         for state,base_prob_dict in last_gen.iteritems():
 
             print 'Sending Progress: %4.1f %% \r'%(gen_count * (100.0 / gen_size)),
@@ -445,55 +447,59 @@ if mpi_rank == 0:
             comm.send(state,dest=dest,tag=3)
             comm.send(base_prob_dict,dest=dest,tag=4)
 
+            working = working.union([dest])
             gen_count += 1
 
         print 'Sending Progress: %4.1f %% \r'%(100.0)
 
-        procs = set(range(1,mpi_size))
+        sleeping = set()
         gen_size = mpi_size + 1
         gen_count = 1
         ## Gather all results
-        while len(procs) > 0:
+        while len(working) > 0:
 
             print 'Gathering Progress: %4.1f %% \r'%(gen_count * (100.0 / gen_size)),
 
-            dest = comm.recv(source=MPI.ANY_SOURCE,tag=1)
+            while 1:
+                dest = comm.recv(source=MPI.ANY_SOURCE,tag=1)
+                if dest in working:
+                    break
+                comm.send('WAIT',dest=dest,tag=2)
+                sleeping = sleeping.union([dest])
+                
             comm.send('COMBINE',dest=dest,tag=2)
             prob_dict = comm.recv(source=dest,tag=3)
-            procs.remove(dest)
+            working.remove(dest)
 
             ## Integrate
             
             gen_count += 1
 
-        for x in range(1,mpi_size):
-            comm.send('RELEASE',dest=x,tag=4)
+        for x in sleeping:
+            comm.send('WAKEUP',dest=x,tag=3)
 
         print 'Gathering Progress: %4.1f %% \r'%(100.0)
 
-            state_shelf = dict()
+#             state_shelf = dict()
 
-            while len(stack) > 0:
-                stack.pop().expand(stack,state_shelf)
-                calls += 1
+#             while len(stack) > 0:
+#                 stack.pop().expand(stack,state_shelf)
+#                 calls += 1
 
-            ## Filter results back to generation results by multiplication
-            for new_state,prob_dict in state_shelf.iteritems():
-                try:
-                    result = load(gen_shelf[new_state])
-                except:
-                    result = dict()
-                multiply(load(base_prob_dict),load(prob_dict),result)
-                gen_shelf[new_state] = dump(result)    
+#             ## Filter results back to generation results by multiplication
+#             for new_state,prob_dict in state_shelf.iteritems():
+#                 try:
+#                     result = load(gen_shelf[new_state])
+#                 except:
+#                     result = dict()
+#                 multiply(load(base_prob_dict),load(prob_dict),result)
+#                 gen_shelf[new_state] = dump(result)    
 
-            state_count += 1
-
-        print 'Progress: %4.1f %% \r'%(100.0),
+#             state_count += 1
 
         event_end = time.time()
         print
         print 'Time elapsed:',(event_end - event_start)
-        print 'Expand function called',calls,'times.'
 
         print 'Post-processing state information...'
         event_start = time.time()
@@ -522,6 +528,10 @@ if mpi_rank == 0:
 
     end_time = time.time()
     print 'Total elapsed time:',(end_time - init_time)
+
+    for proc in procs:
+        comm.send('EXIT',dest=proc,tag=2)
+
 else:
     symbol_table = comm.bcast(symbol_table,root=0)
 
@@ -550,7 +560,10 @@ else:
             base_prob_dict = comm.recv(source=0,tag=4)
         elif message == 'COMBINE':
             sys.stdout.write('Process %d combining.....\n'%(mpi_rank))
-            message = comm.recv(source=0,tag=4)
+            comm.send(None,dest=0,tag=3)
+        elif message == 'WAIT':
+            sys.stdout.write('Process %d waiting.....\n'%(mpi_rank))
+            message = comm.recv(source=0,tag=3)
         elif message == 'EXIT':
             break
 
