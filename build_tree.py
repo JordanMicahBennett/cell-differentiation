@@ -1,5 +1,11 @@
 #!/usr/bin/python -u
 
+use_mpi = True
+try:
+    from mpi4py import MPI
+except:
+    use_mpi = False
+
 from sympy import simplify
 from collections import deque
 import os
@@ -10,93 +16,33 @@ import time
 import shelve
 import cPickle
 
-def usage():
-    print
-    print 'Usage:',sys.argv[0],' [-s] [-e <epsilon>] <num_generations> <rule_file> <init_file>'
-    print '    -s | --simplify : simplify the probabilities symbolically'
-    print '    -e | --epsilon= : provide numerical cutoff for probabilities'
-    print
-    sys.exit(-1)
-
-use_simplify = False
-use_threads = False
-number_of_threads = 1
-
-## Calculate default epsilon - to machine precision
-epsilon = 1
-while epsilon / 2.0  + 1.0 > 1.0:
-    epsilon = epsilon / 2.0
-
-## Parse options
-try:
-    opts, args = getopt.getopt(sys.argv[1:],'se:',['simplify','epsilon='])
-except getopt.GetoptError:
-    usage()
-
-for opt,arg in opts:
-    if opt in ('-s','--simplify'):
-        use_simplify = True
-    elif opt in ('-t','--threads'):
-        use_threads = True
-        try:
-            number_of_threads = int(arg)
-        except:
-            sys.stderr.write('\nERROR! Provided threads not an integer: %s\n\n'%(arg))
-            sys.exit(-1)
-    elif opt in ('-e','--epsilon'):
-        try:
-            new_epsilon = float(arg)
-        except:
-            sys.stderr.write('\nERROR! Provided epsilon not an real value: %s\n\n'%(arg))
-            sys.exit(-1)
-        if new_epsilon <= 0.0:
-            sys.stderr.write('\nERROR! Epsilon must be a positive value.\n\n')
-            sys.exit(-1)
-            
-        elif new_epsilon < epsilon:
-            sys.stderr.write('\nWARNING! Provided epsilon is less than machine precision: %s\n\n'%(arg))
-        elif new_epsilon >= 1.0:
-            sys.stderr.write('\nERROR! Epsilon must be less than one.\n\n')
-            sys.exit(-1)
-        epsilon = new_epsilon
-            
-if use_threads and number_of_threads < 1:
-    sys.stderr.write('\nERROR! Number of threads must be greater than zero.\n\n')
-    sys.exit(-1)
-    
-## Check for correct number of arguments
-if len(args) != 3:
-    usage()
-        
-number_of_generations = 0
-rule_file = args[1]
-init_file = args[2]
-
-try :
-    number_of_generations = int(args[0])
-except:
-    sys.stderr.write('\nERROR! Provided generations not an integer: %s\n\n'%(sys.argv[1]))
-    usage()
-
-if number_of_generations <= 0:
-    sys.stderr.write('\nERROR! Number of generations must be greater than zero.\n\n')
-    sys.exit(-1)
-
-if not os.path.isfile(rule_file):
-    sys.stderr.write('\nERROR! Rules file does not exist: %s\n\n'%(rule_file))
-    sys.exit(-1)
-
-if not os.path.isfile(init_file):
-    sys.stderr.write('\nERROR! Initial state file does not exist: %s\n\n'%(init_file))
-    sys.exit(-1)
-
-## Minimal checking finished --- we are a go!
+mpi_rank = 0
+mpi_size = 1
+comm = None
+if use_mpi:
+    comm = MPI.COMM_WORLD
+    mpi_rank = comm.Get_rank()
+    mpi_size = comm.Get_size()
 
 ## Pickling - got any vinegar?
 def dump(object):
     return (cPickle.dumps(object,cPickle.HIGHEST_PROTOCOL))
 def load(object):
     return (cPickle.loads(object))
+
+## Root exit routine
+def rootexit():
+    comm.bcast(None,root=0)
+    sys.exit(-1)
+
+def usage():
+    print
+    print 'Usage:',sys.argv[0],' [-s] [-e <epsilon>] <num_generations> <rule_file> <init_file>'
+    print '    -s | --simplify : simplify the probabilities symbolically'
+    print '    -e | --epsilon= : provide numerical cutoff for probabilities'
+    print
+    rootexit()
+
 
 ## Symbol table
 ## This class holds all information on the symbols, rules, and probabilities
@@ -383,104 +329,229 @@ def print_summary(shelf,symbol_table,filename):
 
 ## Functions and data structures defined... let us begin.
 
-## Create symbol table and stack
-symbol_table = SymbolTable()
-stack = deque()
-last_gen = dict()
+symbol_table = None
 
-## Read rules into symbol_table
-if not symbol_table.read_rules(rule_file):
-    sys.exit(-1)
+if mpi_rank == 0:
+    use_simplify = False
 
-## Read initial states
-populate_shelf(last_gen,init_file,symbol_table)
+    ## Calculate default epsilon - to machine precision
+    epsilon = 1
+    while epsilon / 2.0  + 1.0 > 1.0:
+        epsilon = epsilon / 2.0
 
-## Extra line
-print
+    ## Parse options
+    try:
+        opts, args = getopt.getopt(sys.argv[1:],'se:',['simplify','epsilon='])
+    except getopt.GetoptError:
+        usage()
 
-init_time = time.time()
-## Perform expansion
-for n in range(number_of_generations):
-    print 'Processing Generation',n+1
-    print
-
-    ## Drop garbage before this generation
-    gc.collect()
-
-    gen_start = time.time()
-
-    ## Read previous state file (or initial state file provided) and
-    ## fill the stack with the states one at a time (expanding into
-    ## temporary file.)
-    event_start = time.time()
-    print 'Expanding tree...'
-
-    gen_shelf = dict()
-
-    state_file_size = len(last_gen) + 1
-    state_file_count = 1
-    state_f = open(init_file,'r')
-    calls = 0
-    for state,base_prob_dict in last_gen.iteritems():
-
-        print 'Progress: %4.1f %% \r'%(state_file_count * (100.0 / state_file_size)),
-        sys.stdout.flush()
-
-        state = load(state)
-        stack.append(Node(state,symbol_table))
-        
-        state_shelf = dict()
-
-        while len(stack) > 0:
-            stack.pop().expand(stack,state_shelf)
-            calls += 1
-        
-        ## Filter results back to generation results by multiplication
-        for new_state,prob_dict in state_shelf.iteritems():
+    for opt,arg in opts:
+        if opt in ('-s','--simplify'):
+            use_simplify = True
+        elif opt in ('-e','--epsilon'):
             try:
-                result = load(gen_shelf[new_state])
+                new_epsilon = float(arg)
             except:
-                result = dict()
-            multiply(load(base_prob_dict),load(prob_dict),result)
-            gen_shelf[new_state] = dump(result)    
+                sys.stderr.write('\nERROR! Provided epsilon not an real value: %s\n\n'%(arg))
+                rootexit()
+            if new_epsilon <= 0.0:
+                sys.stderr.write('\nERROR! Epsilon must be a positive value.\n\n')
+                rootexit()
+            elif new_epsilon < epsilon:
+                sys.stderr.write('\nWARNING! Provided epsilon is less than machine precision: %s\n\n'%(arg))
+            elif new_epsilon >= 1.0:
+                sys.stderr.write('\nERROR! Epsilon must be less than one.\n\n')
+                rootexit()
+            epsilon = new_epsilon
                 
-        state_file_count += 1
-
-    print 'Progress: %4.1f %% \r'%(100.0),
-
-    if calls == 0:
-        sys.stderr.write('\nERROR! Could not get states from file: %s\n\n'%(init_file))
-        sys.exit(-1)
+    ## Check for correct number of arguments
+    if len(args) != 3:
+        usage()
         
-    event_end = time.time()
+    number_of_generations = 0
+    rule_file = args[1]
+    init_file = args[2]
+
+    try :
+        number_of_generations = int(args[0])
+    except:
+        sys.stderr.write('\nERROR! Provided generations not an integer: %s\n\n'%(sys.argv[1]))
+        usage()
+
+    if number_of_generations <= 0:
+        sys.stderr.write('\nERROR! Number of generations must be greater than zero.\n\n')
+        rootexit()
+
+    if not os.path.isfile(rule_file):
+        sys.stderr.write('\nERROR! Rules file does not exist: %s\n\n'%(rule_file))
+        rootexit()
+
+    if not os.path.isfile(init_file):
+        sys.stderr.write('\nERROR! Initial state file does not exist: %s\n\n'%(init_file))
+        rootexit()
+
+    ## Minimal checking finished --- we are a go!
+
+    ## Create symbol table and stack
+    symbol_table = SymbolTable()
+    last_gen = dict()
+
+    ## Read rules into symbol_table
+    if not symbol_table.read_rules(rule_file):
+        rootexit()
+
+    ## Read initial states
+    populate_shelf(last_gen,init_file,symbol_table)
+
+    if len(last_gen) <= 0:
+        sys.stderr.write('\nERROR! Initial state file has no data: %s\n\n'%(init_file))
+        rootexit()
+
+    ## Extra line
     print
-    print 'Time elapsed:',(event_end - event_start)
-    print 'Expand function called',calls,'times.'
 
-    print 'Post-processing state information...'
-    event_start = time.time()
+    ## Good to go.. broadcast the symbol table!
+    symbol_table = comm.bcast(symbol_table,root=0)
 
-    ## Catalog the current generation
-    print_states(gen_shelf,symbol_table,'generation_%03d.txt'%(n+1))
+    init_time = time.time()
+    ## Perform expansion
+    for n in range(number_of_generations):
+        print 'Processing Generation',n+1
+        print
+
+        ## Drop garbage before this generation
+        gc.collect()
+
+        gen_start = time.time()
+
+        ## Read previous state file (or initial state file provided) and
+        ## fill the stack with the states one at a time (expanding into
+        ## temporary file.)
+        event_start = time.time()
+        print 'Expanding tree...'
+
+        gen_shelf = dict()
+
+        ## Send out work
+        gen_size = len(last_gen) + 1
+        gen_count = 1
+        for state,base_prob_dict in last_gen.iteritems():
+
+            print 'Sending Progress: %4.1f %% \r'%(gen_count * (100.0 / gen_size)),
+            sys.stdout.flush()
+
+            dest = comm.recv(source=MPI.ANY_SOURCE,tag=1)
+            comm.send('EXPAND',dest=dest,tag=2)
+            comm.send(state,dest=dest,tag=3)
+            comm.send(base_prob_dict,dest=dest,tag=4)
+
+            gen_count += 1
+
+        print 'Sending Progress: %4.1f %% \r'%(100.0)
+
+        procs = set(range(1,mpi_size))
+        gen_size = mpi_size + 1
+        gen_count = 1
+        ## Gather all results
+        while len(procs) > 0:
+
+            print 'Gathering Progress: %4.1f %% \r'%(gen_count * (100.0 / gen_size)),
+
+            dest = comm.recv(source=MPI.ANY_SOURCE,tag=1)
+            comm.send('COMBINE',dest=dest,tag=2)
+            prob_dict = comm.recv(source=dest,tag=3)
+            procs.remove(dest)
+
+            ## Integrate
+            
+            gen_count += 1
+
+        for x in range(1,mpi_size):
+            comm.send('RELEASE',dest=x,tag=4)
+
+        print 'Gathering Progress: %4.1f %% \r'%(100.0)
+
+            state_shelf = dict()
+
+            while len(stack) > 0:
+                stack.pop().expand(stack,state_shelf)
+                calls += 1
+
+            ## Filter results back to generation results by multiplication
+            for new_state,prob_dict in state_shelf.iteritems():
+                try:
+                    result = load(gen_shelf[new_state])
+                except:
+                    result = dict()
+                multiply(load(base_prob_dict),load(prob_dict),result)
+                gen_shelf[new_state] = dump(result)    
+
+            state_count += 1
+
+        print 'Progress: %4.1f %% \r'%(100.0),
+
+        event_end = time.time()
+        print
+        print 'Time elapsed:',(event_end - event_start)
+        print 'Expand function called',calls,'times.'
+
+        print 'Post-processing state information...'
+        event_start = time.time()
+
+        ## Catalog the current generation
+        print_states(gen_shelf,symbol_table,'generation_%03d.txt'%(n+1))
+
+        event_end = time.time()
+        print
+        print 'Time elapsed:',(event_end - event_start)
+        print 'Processing summary information...'
+        event_start = time.time()
+
+        ## Create summary table
+        print_summary(gen_shelf,symbol_table,'generation_%03d_summary.txt'%(n+1))
+
+        event_end = time.time()
+        gen_end = time.time()
+        print
+        print 'Time elapsed:',(event_end - event_start)
+        print 'Time for this generation:',(gen_end - gen_start)
+        print
+
+        ## Promote to next generation
+        last_gen = gen_shelf
+
+    end_time = time.time()
+    print 'Total elapsed time:',(end_time - init_time)
+else:
+    symbol_table = comm.bcast(symbol_table,root=0)
+
+    if not symbol_table:
+        sys.stdout.write('Process %d exiting.\n'%(mpi_rank))
+        sys.exit()
+
+    sys.stdout.write('Process %d runs.....\n'%(mpi_rank))
     
-    event_end = time.time()
-    print
-    print 'Time elapsed:',(event_end - event_start)
-    print 'Processing summary information...'
-    event_start = time.time()
+    ## Make a stack
+    stack = deque()
 
-    ## Create summary table
-    print_summary(gen_shelf,symbol_table,'generation_%03d_summary.txt'%(n+1))
+    while 1:
+        ## Clean up
+        gc.collect()
 
-    event_end = time.time()
-    gen_end = time.time()
-    print
-    print 'Time elapsed:',(event_end - event_start)
-    print 'Time for this generation:',(gen_end - gen_start)
-    print
+        ## Send info on readiness
+        comm.send(mpi_rank,dest=0,tag=1)
 
-    ## Promote to next generation
-    last_gen = gen_shelf
+        ## Grab a message
+        message = comm.recv(source=0,tag=2)
 
-end_time = time.time()
-print 'Total elapsed time:',(end_time - init_time)
+        if message == 'EXPAND':
+            sys.stdout.write('Process %d expanding.....\n'%(mpi_rank))
+            state = comm.recv(source=0,tag=3)
+            base_prob_dict = comm.recv(source=0,tag=4)
+        elif message == 'COMBINE':
+            sys.stdout.write('Process %d combining.....\n'%(mpi_rank))
+            message = comm.recv(source=0,tag=4)
+        elif message == 'EXIT':
+            break
+
+        
