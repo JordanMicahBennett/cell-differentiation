@@ -92,9 +92,9 @@ if not os.path.isfile(init_file):
 
 ## Minimal checking finished --- we are a go!
 
+## Pickling - got any vinegar?
 def dump(object):
     return (cPickle.dumps(object,cPickle.HIGHEST_PROTOCOL))
-
 def load(object):
     return (cPickle.loads(object))
 
@@ -264,8 +264,6 @@ class Node:
                 expand = x
                 break
         if expand >= 0:
-            print
-            print 'Intermediate',self.to_string()
             self.expandable[expand] -= 1
             self.state[expand] -= 1
             try:
@@ -276,14 +274,10 @@ class Node:
                     n.selected[x] += 1
                     stack.append(n)
             except:
-                print
-                print 'No Match!'
                 self.state[expand] += 1
                 self.expandable[expand] = 0
                 stack.append(self)
         else:
-            print
-            print 'Final',self.to_string()
             try:
                 prob_dict = load(shelf[dump(self.state)])
                 try:
@@ -326,8 +320,13 @@ def multiply(base_prob_dict,prob_dict,result_dict):
 ## Print states to a file
 def print_states(shelf,symbol_table,filename):
     f = open(filename,'w')
-    for state,prob_dict in shelf.iteritems():
-        print >> f,symbol_table.state_to_string(load(state)),':',symbol_table.probability_dict_to_string(load(prob_dict))
+    if use_simplify:
+        for state,prob_dict in shelf.iteritems():
+            print >> f,symbol_table.state_to_string(load(state)),':',simplify(symbol_table.probability_dict_to_string(load(prob_dict)))
+    else:
+        for state,prob_dict in shelf.iteritems():
+            print >> f,symbol_table.state_to_string(load(state)),':',symbol_table.probability_dict_to_string(load(prob_dict))
+
     f.close()
 
 ## Functions and data structures defined... let us begin.
@@ -386,8 +385,6 @@ for n in range(number_of_generations):
         
         ## Filter results back to generation results by multiplication
         for new_state,prob_dict in state_shelf.iteritems():
-            print
-            print load(new_state)
             try:
                 result = load(gen_shelf[new_state])
             except:
