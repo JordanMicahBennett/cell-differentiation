@@ -54,6 +54,14 @@ class SymbolTable:
     rules_probabilities = []
     use_numeric = True
     generic_symbol_number = 1
+    def write(self,f):
+        print >> f,'Object:',self
+        print >> f,'Symbols:',self.symbols
+        print >> f,'Symbols Inv:',self.symbols_inv
+        print >> f,'Rules:',self.rules
+        print >> f,'Rules Inv:',self.rules_inv
+        print >> f,'Rule Probabilities:',self.rules_probabilities
+        print >> f
     def read_rules(self,rule_file):
         ## Read rule file
         f = open(rule_file,'r')
@@ -197,13 +205,14 @@ class Node:
         print >> f,'Expandable:',self.expandable
         print >> f,'Selected:',self.selected
         print >> f,'Symbol Table:',self.symbol_table
-        print >> f,'As String:',self.tostring()
+        print >> f,'As String:',self.to_string()
         print >> f
     def to_string(self):
         return (self.symbol_table.state_to_string(self.state) + ' : ' + 
-                self.symbol_table.probability_to_string(self.selected),1)
+                self.symbol_table.probability_to_string(self.selected))
     def expand(self,stack,shelf):
-        print "Expand for:",self.to_string()
+        print "Expand for:"
+        self.write(sys.stdout)
         expand = -1
         for x in range(len(self.expandable)):
             if self.expandable[x] > 0:
@@ -225,14 +234,14 @@ class Node:
                 stack.append(self)
         else:
             try:
-                prob_dict = load(shelf[dump(self.state)])
+                prob_dict = shelf[dump(self.state)]
                 try:
                     prob_dict[dump(self.selected)] += 1
                 except:
                     prob_dict[dump(self.selected)] = 1
             except:
                 prob_dict = { dump(self.selected) : 1 }
-            shelf[dump(self.state)] = dump(prob_dict)
+            shelf[dump(self.state)] = prob_dict
         return None
 
 ## Pulls some initial states from a file and populate the shelf
@@ -241,7 +250,7 @@ def populate_shelf(shelf,filename,symbol_table):
     for line in f:
         state = symbol_table.parse_state(line)
         if state:
-            shelf[dump(state)] = dump({ dump([0] * len(symbol_table.rules)) : 1 })
+            shelf[dump(state)] = { dump([0] * len(symbol_table.rules)) : 1 }
     f.close()
     return
 
@@ -265,7 +274,6 @@ def multiply(base_prob_dict,prob_dict,result_dict):
 ## Integrate two dictionaries
 def integrate(dest_shelf,src_shelf):
     for state,src_prob_dict in src_shelf.iteritems():
-        src_prob_dict = load(src_prob_dict)
         try:
             dest_prob_dict = dest_shelf[state]
         except:
@@ -276,7 +284,7 @@ def integrate(dest_shelf,src_shelf):
             except:
                 dest_count = 0
             dest_prob_dict[src_prob] = dest_count + src_count
-        dest_shelf[state] = dump(dest_prob_dict)
+        dest_shelf[state] = dest_prob_dict
 
 ## Print states to a file
 def print_states(shelf,symbol_table,filename):
@@ -285,15 +293,17 @@ def print_states(shelf,symbol_table,filename):
     current_count = 0
     if use_simplify:
         for state,prob_dict in shelf.iteritems():
+            state = load(state)
             print "Progress: %4.1f %% \r"%(current_count * (100.0 / max_count)),
             sys.stdout.flush()
-            print >> out_f,symbol_table.state_to_string(load(state)),':',str(simplify(symbol_table.probability_dict_to_string(load(prob_dict)))).replace(' ','').replace('**','^')
+            print >> out_f,symbol_table.state_to_string(state),':',str(simplify(symbol_table.probability_dict_to_string(prob_dict))).replace(' ','').replace('**','^')
             current_count += 1
     else:
         for state,prob_dict in shelf.iteritems():
+            state = load(state)
             print "Progress: %4.1f %% \r"%(current_count * (100.0 / max_count)),
             sys.stdout.flush()
-            print >> out_f,symbol_table.state_to_string(load(state)),':',symbol_table.probability_dict_to_string(load(prob_dict)).replace('**','^')
+            print >> out_f,symbol_table.state_to_string(state),':',symbol_table.probability_dict_to_string(prob_dict).replace('**','^')
             current_count += 1
     print "Progress: %4.1f %% \r"%(100.0),
     sys.stdout.flush()
@@ -320,7 +330,6 @@ def print_summary(shelf,symbol_table,filename):
             sym_dict.append(dict())
         for state,prob_dict in shelf.iteritems():
             state = load(state)
-            prob_dict = load(prob_dict)
             for x in range(len(symbol_table.symbols)):
                 if state[x] > max_count:
                     max_count = state[x]
@@ -345,7 +354,7 @@ def print_summary(shelf,symbol_table,filename):
 
 ## Functions and data structures defined... let us begin.
 
-symbol_table = None
+symbol_table = SymbolTable()
 
 if mpi_rank == 0:
     use_simplify = False
@@ -408,13 +417,14 @@ if mpi_rank == 0:
 
     ## Minimal checking finished --- we are a go!
 
-    ## Create symbol table and stack
-    symbol_table = SymbolTable()
+    ## Create stack
     last_gen = dict()
 
     ## Read rules into symbol_table
     if not symbol_table.read_rules(rule_file):
         rootexit()
+
+    symbol_table.write(sys.stdout)
 
     ## Read initial states
     populate_shelf(last_gen,init_file,symbol_table)
@@ -501,23 +511,6 @@ if mpi_rank == 0:
 
         print 'Gathering Progress: %4.1f %% \r'%(100.0)
 
-#             state_shelf = dict()
-
-#             while len(stack) > 0:
-#                 stack.pop().expand(stack,state_shelf)
-#                 calls += 1
-
-#             ## Filter results back to generation results by multiplication
-#             for new_state,prob_dict in state_shelf.iteritems():
-#                 try:
-#                     result = load(gen_shelf[new_state])
-#                 except:
-#                     result = dict()
-#                 multiply(load(base_prob_dict),load(prob_dict),result)
-#                 gen_shelf[new_state] = dump(result)    
-
-#             state_count += 1
-
         event_end = time.time()
         print
         print 'Time elapsed:',(event_end - event_start)
@@ -579,7 +572,9 @@ else:
         if message == 'EXPAND':
             sys.stdout.write('Process %d expanding.....\n'%(mpi_rank))
             state = comm.recv(source=0,tag=3)
-            base_prob_dict = load(comm.recv(source=0,tag=4))
+            base_prob_dict = comm.recv(source=0,tag=4)
+
+            symbol_table.write(sys.stdout)
 
             state_shelf = dict()
             stack.append(Node(load(state),symbol_table))
@@ -590,11 +585,11 @@ else:
             ## Filter results back to generation results by multiplication
             for new_state,prob_dict in state_shelf.iteritems():
                 try:
-                    result = load(gen_shelf[new_state])
+                    result = gen_shelf[new_state]
                 except:
                     result = dict()
-                multiply(base_prob_dict,load(prob_dict),result)
-                gen_shelf[new_state] = dump(result)    
+                multiply(base_prob_dict,prob_dict,result)
+                gen_shelf[new_state] = result
 
         elif message == 'COMBINE':
             sys.stdout.write('Process %d combining.....\n'%(mpi_rank))
