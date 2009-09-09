@@ -582,11 +582,12 @@ else:
 
             stack.append(Node(load(state),symbol_table))
 
-            while 
+            while len(stack) > 0:
+                
         elif message == 'COMBINE':
             sys.stdout.write('Process %d combining.....\n'%(mpi_rank))
-
             comm.send(gen_shelf,dest=0,tag=3)
+            del gen_shelf
             gen_shelf = dict()
         elif message == 'WAIT':
             sys.stdout.write('Process %d waiting.....\n'%(mpi_rank))
