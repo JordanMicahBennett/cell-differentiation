@@ -72,6 +72,7 @@ class SymbolTable:
         self.rules_probabilities = data[4]
         self.use_numeric = data[5]
         self.generic_symbol_number = data[6]
+        return self
     def write(self,f):
         print >> f,'Object:',self
         print >> f,'Symbols:',self.symbols
@@ -212,17 +213,6 @@ class Node:
         self.expandable = list(state)
         self.selected = [0] * len(symbol_table.rules)
         self.symbol_table = symbol_table
-    def pack(self):
-        data = []
-        data.append(self.state)
-        data.append(self.expandable)
-        data.append(self.selected)
-        return data
-    def unpack(self,data,symbol_table):
-        self.state = data[0]
-        self.expandable = data[1]
-        self.selected = data[2]
-        self.symbol_table = symbol_table
     def copy(self):
         new_node = Node(self.state,self.symbol_table)
         new_node.expandable = list(self.expandable)
@@ -240,8 +230,8 @@ class Node:
         return (self.symbol_table.state_to_string(self.state) + ' : ' + 
                 self.symbol_table.probability_to_string(self.selected))
     def expand(self,stack,shelf):
-        print "Expand for:"
-        self.write(sys.stdout)
+#        print "Expand for:"
+#        self.write(sys.stdout)
         expand = -1
         for x in range(len(self.expandable)):
             if self.expandable[x] > 0:
@@ -453,8 +443,6 @@ if mpi_rank == 0:
     if not symbol_table.read_rules(rule_file):
         rootexit()
 
-    symbol_table.write(sys.stdout)
-
     ## Read initial states
     populate_shelf(last_gen,init_file,symbol_table)
 
@@ -466,7 +454,8 @@ if mpi_rank == 0:
     print
 
     ## Good to go.. broadcast the symbol table!
-    symbol_table = comm.bcast(symbol_table.pack(),root=0)
+    st = symbol_table.pack()
+    st = comm.bcast(st,root=0)
 
     init_time = time.time()
     ## Perform expansion
@@ -541,7 +530,6 @@ if mpi_rank == 0:
         print 'Gathering Progress: %4.1f %% \r'%(100.0)
 
         event_end = time.time()
-        print
         print 'Time elapsed:',(event_end - event_start)
 
         print 'Post-processing state information...'
@@ -576,15 +564,16 @@ if mpi_rank == 0:
         comm.send('EXIT',dest=proc,tag=2)
 
 else:
-    st = comm.bcast(symbol_table,root=0)
+    st = None
+    st = comm.bcast(st,root=0)
 
     if not st:
-        sys.stdout.write('Process %d exiting.\n'%(mpi_rank))
+#        sys.stdout.write('Process %d exiting.\n'%(mpi_rank))
         sys.exit()
 
     symbol_table.unpack(st)
 
-    sys.stdout.write('Process %d runs.....\n'%(mpi_rank))
+#    sys.stdout.write('Process %d runs.....\n'%(mpi_rank))
     
     ## Make a stack and a generation shelf
     stack = deque()
@@ -601,14 +590,12 @@ else:
         message = comm.recv(source=0,tag=2)
 
         if message == 'EXPAND':
-            sys.stdout.write('Process %d expanding.....\n'%(mpi_rank))
+#            sys.stdout.write('Process %d expanding.....\n'%(mpi_rank))
             state = comm.recv(source=0,tag=3)
             base_prob_dict = comm.recv(source=0,tag=4)
 
-            symbol_table.write(sys.stdout)
-
             state_shelf = dict()
-            stack.append(Node().unpack(state,symbol_table))
+            stack.append(Node(load(state),symbol_table))
 
             while len(stack) > 0:
                 stack.pop().expand(stack,state_shelf)
@@ -623,12 +610,12 @@ else:
                 gen_shelf[new_state] = result
 
         elif message == 'COMBINE':
-            sys.stdout.write('Process %d combining.....\n'%(mpi_rank))
+#            sys.stdout.write('Process %d combining.....\n'%(mpi_rank))
             comm.send(gen_shelf,dest=0,tag=3)
             del gen_shelf
             gen_shelf = dict()
         elif message == 'WAIT':
-            sys.stdout.write('Process %d waiting.....\n'%(mpi_rank))
+#            sys.stdout.write('Process %d waiting.....\n'%(mpi_rank))
             message = comm.recv(source=0,tag=3)
         elif message == 'EXIT':
             break
