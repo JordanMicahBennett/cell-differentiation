@@ -20,6 +20,7 @@ import gc
 import time
 import shelve
 import cPickle
+import glob
 
 mpi_rank = 0
 mpi_size = 1
@@ -471,7 +472,7 @@ if mpi_rank == 0:
     ## Minimal checking finished --- we are a go!
 
     ## Create stack
-    last_gen = shelve.open('.generation_%03d.%d.dat'%(0,os.getpid()))
+    last_gen = shelve.open('.generation_%03d.%d'%(0,os.getpid()))
 
     ## Read rules into symbol_table
     if not symbol_table.read_rules(rule_file):
@@ -498,7 +499,7 @@ if mpi_rank == 0:
         print 'Processing Generation',n
         print
 
-        gen_shelf = shelve.open('.generation_%03d.%d.dat'%(n,os.getpid()))
+        gen_shelf = shelve.open('.generation_%03d.%d'%(n,os.getpid()))
 
         ## Drop garbage before this generation
         gc.collect()
@@ -602,7 +603,8 @@ if mpi_rank == 0:
 
         ## Promote to next generation
         last_gen.close()
-        os.remove('.generation_%03d.%d.dat'%(n-1,os.getpid()))
+        for filename in glob.glob('.generation_%03d.%d*'%(n-1,os.getpid())):
+            os.remove(filename)
         last_gen = gen_shelf
 
     end_time = time.time()
@@ -610,7 +612,8 @@ if mpi_rank == 0:
 
     ## Finalize results
     last_gen.close()
-    os.remove('.generation_%03d.%d.dat'%(number_of_generations,os.getpid()))
+    for filename in glob.glob('.generation_%03d.%d*'%(n-1,os.getpid())):
+        os.remove(filename)
 
     if use_mpi:
         for proc in procs:
@@ -629,7 +632,7 @@ else:
     ## Make a stack and a generation shelf
     stack = deque()
 #    gen_shelf = dict()
-    gen_shelf = shelve.open('.build_tree_worker.%d.dat'%(os.getpid()))
+    gen_shelf = shelve.open('.build_tree_worker.%d'%(os.getpid()))
 
     while 1:
         ## Clean up
@@ -658,12 +661,14 @@ else:
 #            del gen_shelf
 #            gen_shelf = dict()
             gen_shelf.close()
-            os.remove('.build_tree_worker.%d.dat'%(os.getpid()))
-            gen_shelf = shelve.open('.build_tree_worker.%d.dat'%(os.getpid()))
+            for filename in glob.glob('.build_tree_worker.%d*'%(os.getpid())):
+                os.remove(filename)
+            gen_shelf = shelve.open('.build_tree_worker.%d'%(os.getpid()))
         elif message == 'WAIT':
             message = comm.recv(source=0,tag=3)
         elif message == 'EXIT':
             gen_shelf.close()
-            os.remove('.build_tree_worker.%d.dat'%(os.getpid()))
+            for filename in glob.glob('.build_tree_worker.%d*'%(os.getpid())):
+                os.remove(filename)
             break
 
