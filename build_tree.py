@@ -303,22 +303,25 @@ def multiply(base_prob_dict,prob_dict,result_dict):
 ## Integrate two dictionaries
 def integrate(dest_shelf,src_shelf):
     for state,src_prob_dict in src_shelf.iteritems():
-        integrate_item(dest_shelf,state,src_prob_dict)
+        integrate_state(dest_shelf,state,src_prob_dict)
 
 ## Integrate one (state,prob_dict) into a dictionary
-def integrate_item(dest_shelf,state,src_prob_dict):
+def integrate_state(dest_shelf,state,src_prob_dict):
     try:
         dest_prob_dict = dest_shelf[state]
     except:
         dest_prob_dict = dict()
+    integrate_prob(dest_prob_dict,src_prob_dict)
+    dest_shelf[state] = dest_prob_dict
+
+def integrate_prob(dest_prob_dict,src_prob_dict):
     for src_prob,src_count in src_prob_dict.iteritems():
         try:
             dest_count = dest_prob_dict[src_prob]
         except:
             dest_count = 0
         dest_prob_dict[src_prob] = dest_count + src_count
-    dest_shelf[state] = dest_prob_dict
-
+    
 ## Print states to a file
 def print_states(shelf,symbol_table,filename):
     out_f = open(filename,'w')
@@ -343,47 +346,50 @@ def print_states(shelf,symbol_table,filename):
     out_f.close()
     return
 
-## Print state summary information
-def print_summary(shelf,symbol_table,filename):
-    out_f = open(filename,'w')
+## Creates a summary shelve
+def make_summary(summary,shelf,symbol_table):
     max_count = 0
+    size = len(shelf)
     current_count = 0
+    for state,prob_dict in shelf.iteritems():
+        state = load(state)
+        print "Progress: %4.1f %% \r"%(current_count * (100.0 / ((size * 2) + 1))),
+        for x in range(len(symbol_table.symbols)):
+            if (state[x] > max_count):
+                max_count = state[x]
+            summary_index = dump((symbol_table.symbols[x], state[x]))
+            try:
+                sum_prob_dict = summary[summary_index]
+            except:
+                sum_prob_dict = dict()
+            integrate_prob(sum_prob_dict,prob_dict)
+            summary[summary_index] = sum_prob_dict
+    return max_count+1
+
+## Print summary table
+
+def print_summary(summary,size,symbol_table,filename):
+    out_f = open(filename,'w')
     ## Header
     for x in symbol_table.symbols:
         print >> out_f,"\"%s\""%(x),
     print >> out_f
-    # Hit it!
-    while current_count <= max_count:
-        print "Progress: %4.1f %% \r"%(current_count * (100.0 / (max_count + 1))),
-        sys.stdout.flush()
-        print >> out_f,current_count,
-        ## Data structures
-        sym_dict = []
-        for x in range(len(symbol_table.symbols)):
-            sym_dict.append(dict())
-        for state,prob_dict in shelf.iteritems():
-            state = load(state)
-            for x in range(len(symbol_table.symbols)):
-                if state[x] > max_count:
-                    max_count = state[x]
-                if state[x] == current_count:
-                    for prob,count in prob_dict.iteritems():
-                        try:
-                            sym_dict[x][prob] += count
-                        except:
-                            sym_dict[x][prob] = count
-        if use_simplify:
-            for x in range(len(symbol_table.symbols)):
-                print >> out_f,"\"%s\""%(str(simplify(symbol_table.probability_dict_to_string(sym_dict[x]))).replace(' ','').replace('**','^')),
-        else:
-            for x in range(len(symbol_table.symbols)):
-                print >> out_f,"\"%s\""%(symbol_table.probability_dict_to_string(sym_dict[x]).replace('**','^')),
+    for count in range(size):
+        print >> out_f,count,
+        print "Progress: %4.1f %% \r"%((count + size) * (100.0 / ((size * 2) + 1))),
+        for symbol in symbol_table.symbols:
+            summary_index = dump((symbol,count))
+            try:
+                prob_dict = summary[summary_index]
+            except:
+                prob_dict = dict()
+            if use_simplify:
+                print >> out_f,"\"%s\""%(str(simplify(symbol_table.probability_dict_to_string(prob_dict))).replace(' ','').replace('**','^')),
+            else:
+                print >> out_f,"\"%s\""%(symbol_table.probability_dict_to_string(prob_dict).replace('**','^')),
         print >> out_f
-        current_count += 1
     out_f.close()
     print "Progress: %4.1f %% \r"%(100.0),
-    sys.stdout.flush()
-    return
 
 def expand_state(state_node,base_prob_dict,gen_shelf):
     state_shelf = dict()
@@ -588,7 +594,13 @@ if mpi_rank == 0:
         event_start = time.time()
 
         ## Create summary table
-        print_summary(gen_shelf,symbol_table,'generation_%03d_summary.txt'%(n))
+        summary = shelve.open('.summary_%03d.%d'%(n,os.getpid()))
+        print_summary(summary,
+                      make_summary(summary,gen_shelf,symbol_table),
+                      symbol_table,'generation_%03d_summary.txt'%(n))
+        summary.close()
+        for filename in glob.glob('.summary_%03d.%d*'%(n-1,os.getpid())):
+            os.remove(filename)
 
         event_end = time.time()
         gen_end = time.time()
