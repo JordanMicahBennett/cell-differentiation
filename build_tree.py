@@ -23,6 +23,8 @@ if use_mpi:
     comm = MPI.COMM_WORLD
     mpi_rank = comm.Get_rank()
     mpi_size = comm.Get_size()
+if mpi_size == 1:
+    use_mpi = False
 
 ## Pickling - got any vinegar?
 def dump(object):
@@ -371,6 +373,23 @@ def print_summary(shelf,symbol_table,filename):
     sys.stdout.flush()
     return
 
+def expand_state(state_node,base_prob_dict,gen_shelf):
+    state_shelf = dict()
+    stack = deque()
+    stack.append(state_node)
+
+    while len(stack) > 0:
+        stack.pop().expand(stack,state_shelf)
+
+    ## Filter results back to generation results by multiplication
+    for new_state,prob_dict in state_shelf.iteritems():
+        try:
+            result = gen_shelf[new_state]
+        except:
+            result = dict()
+        multiply(base_prob_dict,prob_dict,result)
+        gen_shelf[new_state] = result
+
 ## Functions and data structures defined... let us begin.
 
 symbol_table = SymbolTable()
@@ -454,8 +473,9 @@ if mpi_rank == 0:
     print
 
     ## Good to go.. broadcast the symbol table!
-    st = symbol_table.pack()
-    st = comm.bcast(st,root=0)
+    if use_mpi:
+        st = symbol_table.pack()
+        st = comm.bcast(st,root=0)
 
     init_time = time.time()
     ## Perform expansion
@@ -485,49 +505,55 @@ if mpi_rank == 0:
 
             gc.collect()
 
-            print 'Sending Progress: %4.1f %% \r'%(gen_count * (100.0 / gen_size)),
+            print 'Expansion Progress: %4.1f %% \r'%(gen_count * (100.0 / gen_size)),
             sys.stdout.flush()
 
-            dest = comm.recv(source=MPI.ANY_SOURCE,tag=1)
-            comm.send('EXPAND',dest=dest,tag=2)
-            comm.send(state,dest=dest,tag=3)
-            comm.send(base_prob_dict,dest=dest,tag=4)
-
-            working = working.union([dest])
-            gen_count += 1
-
-        print 'Sending Progress: %4.1f %% \r'%(100.0)
-
-        sleeping = set()
-        gen_size = mpi_size + 1
-        gen_count = 1
-        ## Gather all results
-        while len(working) > 0:
-
-            gc.collect()
-
-            print 'Gathering Progress: %4.1f %% \r'%(gen_count * (100.0 / gen_size)),
-
-            while 1:
+            if use_mpi:
                 dest = comm.recv(source=MPI.ANY_SOURCE,tag=1)
-                if dest in working:
-                    break
-                comm.send('WAIT',dest=dest,tag=2)
-                sleeping = sleeping.union([dest])
-                
-            comm.send('COMBINE',dest=dest,tag=2)
-            proc_dict = comm.recv(source=dest,tag=3)
-            working.remove(dest)
+                comm.send('EXPAND',dest=dest,tag=2)
+                comm.send(state,dest=dest,tag=3)
+                comm.send(base_prob_dict,dest=dest,tag=4)
 
-            ## Integrate process results into this dictionary
-            integrate(gen_shelf,proc_dict)
+                working = working.union([dest])
+            else:
+                state = Node(load(state),symbol_table)
+                expand_state(state,base_prob_dict,gen_shelf)
                 
             gen_count += 1
 
-        for x in sleeping:
-            comm.send('WAKEUP',dest=x,tag=3)
+        print 'Expansion Progress: %4.1f %% \r'%(100.0)
 
-        print 'Gathering Progress: %4.1f %% \r'%(100.0)
+        if use_mpi:
+            sleeping = set()
+            gen_size = mpi_size + 1
+            gen_count = 1
+            ## Gather all results
+            while len(working) > 0:
+
+                gc.collect()
+
+                print 'Gathering Progress: %4.1f %% \r'%(gen_count * (100.0 / gen_size)),
+
+                while 1:
+                    dest = comm.recv(source=MPI.ANY_SOURCE,tag=1)
+                    if dest in working:
+                        break
+                    comm.send('WAIT',dest=dest,tag=2)
+                    sleeping = sleeping.union([dest])
+
+                comm.send('COMBINE',dest=dest,tag=2)
+                proc_dict = comm.recv(source=dest,tag=3)
+                working.remove(dest)
+
+                ## Integrate process results into this dictionary
+                integrate(gen_shelf,proc_dict)
+
+                gen_count += 1
+
+            for x in sleeping:
+                comm.send('WAKEUP',dest=x,tag=3)
+
+            print 'Gathering Progress: %4.1f %% \r'%(100.0)
 
         event_end = time.time()
         print 'Time elapsed:',(event_end - event_start)
@@ -560,8 +586,9 @@ if mpi_rank == 0:
     end_time = time.time()
     print 'Total elapsed time:',(end_time - init_time)
 
-    for proc in procs:
-        comm.send('EXIT',dest=proc,tag=2)
+    if use_mpi:
+        for proc in procs:
+            comm.send('EXIT',dest=proc,tag=2)
 
 else:
     st = None
@@ -593,22 +620,8 @@ else:
 #            sys.stdout.write('Process %d expanding.....\n'%(mpi_rank))
             state = comm.recv(source=0,tag=3)
             base_prob_dict = comm.recv(source=0,tag=4)
-
-            state_shelf = dict()
-            stack.append(Node(load(state),symbol_table))
-
-            while len(stack) > 0:
-                stack.pop().expand(stack,state_shelf)
-
-            ## Filter results back to generation results by multiplication
-            for new_state,prob_dict in state_shelf.iteritems():
-                try:
-                    result = gen_shelf[new_state]
-                except:
-                    result = dict()
-                multiply(base_prob_dict,prob_dict,result)
-                gen_shelf[new_state] = result
-
+            state = Node(load(state),symbol_table)
+            expand_state(state,base_prob_dict,gen_shelf)
         elif message == 'COMBINE':
 #            sys.stdout.write('Process %d combining.....\n'%(mpi_rank))
             comm.send(gen_shelf,dest=0,tag=3)
