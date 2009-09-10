@@ -599,7 +599,7 @@ if mpi_rank == 0:
                       make_summary(summary,gen_shelf,symbol_table),
                       symbol_table,'generation_%03d_summary.txt'%(n))
         summary.close()
-        for filename in glob.glob('.summary_%03d.%d*'%(n-1,os.getpid())):
+        for filename in glob.glob('.summary_%03d.%d*'%(n,os.getpid())):
             os.remove(filename)
 
         event_end = time.time()
