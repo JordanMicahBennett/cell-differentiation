@@ -54,6 +54,24 @@ class SymbolTable:
     rules_probabilities = []
     use_numeric = True
     generic_symbol_number = 1
+    def pack(self):
+        data = []
+        data.append(self.symbols)
+        data.append(self.symbols_inv)
+        data.append(self.rules)
+        data.append(self.rules_inv)
+        data.append(self.rules_probabilities)
+        data.append(self.use_numeric)
+        data.append(self.generic_symbol_number)
+        return data
+    def unpack(self,data):
+        self.symbols = data[0]
+        self.symbols_inv = data[1]
+        self.rules = data[2]
+        self.rules_inv = data[3]
+        self.rules_probabilities = data[4]
+        self.use_numeric = data[5]
+        self.generic_symbol_number = data[6]
     def write(self,f):
         print >> f,'Object:',self
         print >> f,'Symbols:',self.symbols
@@ -193,6 +211,17 @@ class Node:
         self.state = list(state)
         self.expandable = list(state)
         self.selected = [0] * len(symbol_table.rules)
+        self.symbol_table = symbol_table
+    def pack(self):
+        data = []
+        data.append(self.state)
+        data.append(self.expandable)
+        data.append(self.selected)
+        return data
+    def unpack(self,data,symbol_table):
+        self.state = data[0]
+        self.expandable = data[1]
+        self.selected = data[2]
         self.symbol_table = symbol_table
     def copy(self):
         new_node = Node(self.state,self.symbol_table)
@@ -437,7 +466,7 @@ if mpi_rank == 0:
     print
 
     ## Good to go.. broadcast the symbol table!
-    symbol_table = comm.bcast(symbol_table,root=0)
+    symbol_table = comm.bcast(symbol_table.pack(),root=0)
 
     init_time = time.time()
     ## Perform expansion
@@ -547,11 +576,13 @@ if mpi_rank == 0:
         comm.send('EXIT',dest=proc,tag=2)
 
 else:
-    symbol_table = comm.bcast(symbol_table,root=0)
+    st = comm.bcast(symbol_table,root=0)
 
-    if not symbol_table:
+    if not st:
         sys.stdout.write('Process %d exiting.\n'%(mpi_rank))
         sys.exit()
+
+    symbol_table.unpack(st)
 
     sys.stdout.write('Process %d runs.....\n'%(mpi_rank))
     
@@ -577,7 +608,7 @@ else:
             symbol_table.write(sys.stdout)
 
             state_shelf = dict()
-            stack.append(Node(load(state),symbol_table))
+            stack.append(Node().unpack(state,symbol_table))
 
             while len(stack) > 0:
                 stack.pop().expand(stack,state_shelf)
