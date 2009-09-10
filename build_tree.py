@@ -619,6 +619,7 @@ else:
     ## Make a stack and a generation shelf
     stack = deque()
     gen_shelf = dict()
+#    gen_shelf = shelve.open('.build_tree_worker.%d.dat'%(os.getpid()))
 
     while 1:
         ## Clean up
@@ -641,6 +642,9 @@ else:
             comm.send(gen_shelf,dest=0,tag=3)
             del gen_shelf
             gen_shelf = dict()
+#            gen_shelf.close()
+#            os.remove('.build_tree_worker.%d.dat'%(os.getpid()))
+#            gen_shelf = shelve.open('.build_tree_worker.%d.dat'%(os.getpid()))
         elif message == 'WAIT':
             message = comm.recv(source=0,tag=3)
         elif message == 'EXIT':
