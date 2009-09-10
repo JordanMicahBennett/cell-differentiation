@@ -539,6 +539,7 @@ if mpi_rank == 0:
         print 'Expansion Progress: %4.1f %% \r'%(100.0)
 
         if use_mpi:
+            gen_shelf.close()
             sleeping = set()
             gen_size = mpi_size + 1
             gen_count = 1
@@ -557,15 +558,8 @@ if mpi_rank == 0:
                     sleeping = sleeping.union([dest])
 
                 comm.send('COMBINE',dest=dest,tag=2)
-#                proc_shelf = comm.recv(source=dest,tag=3)
-#                integrate(gen_shelf,proc_shelf)
-                while 1:
-                    proc_state = comm.recv(source=dest,tag=3)
-                    proc_dict = comm.recv(source=dest,tag=4)
-                    if proc_state:
-                        integrate_item(gen_shelf,proc_state,proc_dict)
-                    else:
-                        break
+                comm.send('.generation_%03d.%d'%(n,os.getpid()),dest=dest,tag=3)
+                comm.recv(source=dest,tag=4)
 
                 working.remove(dest)
 
@@ -573,6 +567,8 @@ if mpi_rank == 0:
 
             for x in sleeping:
                 comm.send('WAKEUP',dest=x,tag=3)
+                
+            gen_shelf = shelve.open('.generation_%03d.%d'%(n,os.getpid()))
 
             print 'Gather Progress: %4.1f %% \r'%(100.0)
 
@@ -652,15 +648,14 @@ else:
             del state
             del base_prob_dict
         elif message == 'COMBINE':
-#            comm.send(gen_shelf,dest=0,tag=3)
-            for state,prob_dict in gen_shelf.iteritems():
-                comm.send(state,dest=0,tag=3)
-                comm.send(prob_dict,dest=0,tag=4)
-            comm.send(None,dest=0,tag=3)
-            comm.send(None,dest=0,tag=4)
+            filename = comm.recv(source=0,tag=3)
+            root_shelf = shelve.open(filename)
+            integrate(root_shelf,gen_shelf)
+            root_shelf.close()
 #            del gen_shelf
 #            gen_shelf = dict()
             gen_shelf.close()
+            comm.send("DONE",dest=0,tag=4)
             for filename in glob.glob('.build_tree_worker.%d*'%(os.getpid())):
                 os.remove(filename)
             gen_shelf = shelve.open('.build_tree_worker.%d'%(os.getpid()))
