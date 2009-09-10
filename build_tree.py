@@ -6,7 +6,12 @@ try:
 except:
     use_mpi = False
 
-from sympy import simplify
+sympy_available = True
+try:
+    from sympy import simplify
+except:
+    sympy_available = False
+
 from collections import deque
 import os
 import sys
@@ -142,7 +147,10 @@ class SymbolTable:
         ## Are we using numbers or self.symbols for probabilities?
         self.use_numeric = True
         for x in range(len(rule_probs)):
-            temp = str(simplify(rule_probs[x])).replace(' ','')
+            if sympy_available:
+                temp = str(simplify(rule_probs[x])).replace(' ','')
+            else:
+                temp = str(rule_probs[x]).replace(' ','')
             try:
                 self.rules_probabilities.append(float(temp))
             except:
@@ -410,7 +418,10 @@ if mpi_rank == 0:
 
     for opt,arg in opts:
         if opt in ('-s','--simplify'):
-            use_simplify = True
+            if not sympy_available:
+                sys.stderr.write('\nWARNING! Simplification requested but Sympy module not found!\n\n')
+            else:
+                use_simplify = True
         elif opt in ('-e','--epsilon'):
             try:
                 new_epsilon = float(arg)
