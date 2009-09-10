@@ -302,17 +302,21 @@ def multiply(base_prob_dict,prob_dict,result_dict):
 ## Integrate two dictionaries
 def integrate(dest_shelf,src_shelf):
     for state,src_prob_dict in src_shelf.iteritems():
+        integrate_item(dest_shelf,state,src_prob_dict)
+
+## Integrate one (state,prob_dict) into a dictionary
+def integrate_item(dest_shelf,state,src_prob_dict):
+    try:
+        dest_prob_dict = dest_shelf[state]
+    except:
+        dest_prob_dict = dict()
+    for src_prob,src_count in src_prob_dict.iteritems():
         try:
-            dest_prob_dict = dest_shelf[state]
+            dest_count = dest_prob_dict[src_prob]
         except:
-            dest_prob_dict = dict()
-        for src_prob,src_count in src_prob_dict.iteritems():
-            try:
-                dest_count = dest_prob_dict[src_prob]
-            except:
-                dest_count = 0
-            dest_prob_dict[src_prob] = dest_count + src_count
-        dest_shelf[state] = dest_prob_dict
+            dest_count = 0
+        dest_prob_dict[src_prob] = dest_count + src_count
+    dest_shelf[state] = dest_prob_dict
 
 ## Print states to a file
 def print_states(shelf,symbol_table,filename):
@@ -552,11 +556,17 @@ if mpi_rank == 0:
                     sleeping = sleeping.union([dest])
 
                 comm.send('COMBINE',dest=dest,tag=2)
-                proc_dict = comm.recv(source=dest,tag=3)
-                working.remove(dest)
+#                proc_shelf = comm.recv(source=dest,tag=3)
+#                integrate(gen_shelf,proc_shelf)
+                while 1:
+                    proc_state = comm.recv(source=dest,tag=3)
+                    proc_dict = comm.recv(source=dest,tag=4)
+                    if proc_state:
+                        integrate_item(gen_shelf,proc_state,proc_dict)
+                    else:
+                        break
 
-                ## Integrate process results into this dictionary
-                integrate(gen_shelf,proc_dict)
+                working.remove(dest)
 
                 gen_count += 1
 
@@ -639,7 +649,12 @@ else:
             del state
             del base_prob_dict
         elif message == 'COMBINE':
-            comm.send(gen_shelf,dest=0,tag=3)
+#            comm.send(gen_shelf,dest=0,tag=3)
+            for state,prob_dict in gen_shelf.iteritems():
+                comm.send(state,dest=0,tag=3)
+                comm.send(prob_dict,dest=0,tag=4)
+            comm.send(None,dest=0,tag=3)
+            comm.send(None,dest=0,tag=4)
 #            del gen_shelf
 #            gen_shelf = dict()
             gen_shelf.close()
