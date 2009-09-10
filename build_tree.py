@@ -28,6 +28,7 @@ if use_mpi:
     comm = MPI.COMM_WORLD
     mpi_rank = comm.Get_rank()
     mpi_size = comm.Get_size()
+
 if mpi_size == 1:
     use_mpi = False
 
@@ -240,8 +241,6 @@ class Node:
         return (self.symbol_table.state_to_string(self.state) + ' : ' + 
                 self.symbol_table.probability_to_string(self.selected))
     def expand(self,stack,shelf):
-#        print "Expand for:"
-#        self.write(sys.stdout)
         expand = -1
         for x in range(len(self.expandable)):
             if self.expandable[x] > 0:
@@ -402,6 +401,7 @@ def expand_state(state_node,base_prob_dict,gen_shelf):
 
 symbol_table = SymbolTable()
 
+## Root process
 if mpi_rank == 0:
     use_simplify = False
 
@@ -505,7 +505,6 @@ if mpi_rank == 0:
         ## fill the stack with the states one at a time (expanding into
         ## temporary file.)
         event_start = time.time()
-        print 'Expanding tree...'
 
         ## Send out work
         gen_size = len(last_gen) + 1
@@ -543,7 +542,7 @@ if mpi_rank == 0:
 
                 gc.collect()
 
-                print 'Gathering Progress: %4.1f %% \r'%(gen_count * (100.0 / gen_size)),
+                print 'Gather Progress: %4.1f %% \r'%(gen_count * (100.0 / gen_size)),
 
                 while 1:
                     dest = comm.recv(source=MPI.ANY_SOURCE,tag=1)
@@ -564,7 +563,7 @@ if mpi_rank == 0:
             for x in sleeping:
                 comm.send('WAKEUP',dest=x,tag=3)
 
-            print 'Gathering Progress: %4.1f %% \r'%(100.0)
+            print 'Gather Progress: %4.1f %% \r'%(100.0)
 
         event_end = time.time()
         print 'Time elapsed:',(event_end - event_start)
@@ -601,18 +600,16 @@ if mpi_rank == 0:
         for proc in procs:
             comm.send('EXIT',dest=proc,tag=2)
 
+## Worker process
 else:
     st = None
     st = comm.bcast(st,root=0)
 
     if not st:
-#        sys.stdout.write('Process %d exiting.\n'%(mpi_rank))
         sys.exit()
 
     symbol_table.unpack(st)
 
-#    sys.stdout.write('Process %d runs.....\n'%(mpi_rank))
-    
     ## Make a stack and a generation shelf
     stack = deque()
     gen_shelf = dict()
@@ -628,18 +625,15 @@ else:
         message = comm.recv(source=0,tag=2)
 
         if message == 'EXPAND':
-#            sys.stdout.write('Process %d expanding.....\n'%(mpi_rank))
             state = comm.recv(source=0,tag=3)
             base_prob_dict = comm.recv(source=0,tag=4)
             state = Node(load(state),symbol_table)
             expand_state(state,base_prob_dict,gen_shelf)
         elif message == 'COMBINE':
-#            sys.stdout.write('Process %d combining.....\n'%(mpi_rank))
             comm.send(gen_shelf,dest=0,tag=3)
             del gen_shelf
             gen_shelf = dict()
         elif message == 'WAIT':
-#            sys.stdout.write('Process %d waiting.....\n'%(mpi_rank))
             message = comm.recv(source=0,tag=3)
         elif message == 'EXIT':
             break
