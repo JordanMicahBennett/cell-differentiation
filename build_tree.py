@@ -612,7 +612,7 @@ if mpi_rank == 0:
 
     ## Finalize results
     last_gen.close()
-    for filename in glob.glob('.generation_%03d.%d*'%(n-1,os.getpid())):
+    for filename in glob.glob('.generation_%03d.%d*'%(number_of_generations,os.getpid())):
         os.remove(filename)
 
     if use_mpi:
