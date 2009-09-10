@@ -47,7 +47,7 @@ def usage():
     print
     print 'Usage:',sys.argv[0],' [-s] [-e <epsilon>] <num_generations> <rule_file> <init_file>'
     print '    -s | --simplify : simplify the probabilities symbolically'
-    print '    -e | --epsilon= : provide numerical cutoff for probabilities'
+#    print '    -e | --epsilon= : provide numerical cutoff for probabilities'
     print
     rootexit()
 
@@ -467,7 +467,7 @@ if mpi_rank == 0:
     ## Minimal checking finished --- we are a go!
 
     ## Create stack
-    last_gen = dict()
+    last_gen = shelve.open('.generation_%03d.%d.dat'%(0,os.getpid()))
 
     ## Read rules into symbol_table
     if not symbol_table.read_rules(rule_file):
@@ -490,11 +490,11 @@ if mpi_rank == 0:
 
     init_time = time.time()
     ## Perform expansion
-    for n in range(number_of_generations):
-        print 'Processing Generation',n+1
+    for n in range(1,number_of_generations+1):
+        print 'Processing Generation',n
         print
 
-        gen_shelf = dict()
+        gen_shelf = shelve.open('.generation_%03d.%d.dat'%(n,os.getpid()))
 
         ## Drop garbage before this generation
         gc.collect()
@@ -572,7 +572,7 @@ if mpi_rank == 0:
         event_start = time.time()
 
         ## Catalog the current generation
-        print_states(gen_shelf,symbol_table,'generation_%03d.txt'%(n+1))
+        print_states(gen_shelf,symbol_table,'generation_%03d.txt'%(n))
 
         event_end = time.time()
         print
@@ -581,7 +581,7 @@ if mpi_rank == 0:
         event_start = time.time()
 
         ## Create summary table
-        print_summary(gen_shelf,symbol_table,'generation_%03d_summary.txt'%(n+1))
+        print_summary(gen_shelf,symbol_table,'generation_%03d_summary.txt'%(n))
 
         event_end = time.time()
         gen_end = time.time()
@@ -591,10 +591,16 @@ if mpi_rank == 0:
         print
 
         ## Promote to next generation
+        last_gen.close()
+        os.remove('.generation_%03d.%d.dat'%(n-1,os.getpid()))
         last_gen = gen_shelf
 
     end_time = time.time()
     print 'Total elapsed time:',(end_time - init_time)
+
+    ## Finalize results
+    last_gen.close()
+    os.remove('.generation_%03d.%d.dat'%(number_of_generations,os.getpid()))
 
     if use_mpi:
         for proc in procs:
@@ -629,6 +635,8 @@ else:
             base_prob_dict = comm.recv(source=0,tag=4)
             state = Node(load(state),symbol_table)
             expand_state(state,base_prob_dict,gen_shelf)
+            del state
+            del base_prob_dict
         elif message == 'COMBINE':
             comm.send(gen_shelf,dest=0,tag=3)
             del gen_shelf
