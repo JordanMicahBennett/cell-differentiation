@@ -364,6 +364,7 @@ def make_summary(summary,shelf,symbol_table):
                 sum_prob_dict = dict()
             integrate_prob(sum_prob_dict,prob_dict)
             summary[summary_index] = sum_prob_dict
+        current_count += 1
     return max_count+1
 
 ## Print summary table
