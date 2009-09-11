@@ -92,7 +92,7 @@ class SymbolTable:
         
         ## Get symbols
         data = []
-        for x in xrange(len(filedata)):
+        for x in range(len(filedata)):
             temp = filedata[x].split(':')[0].split()
             for y in temp:
                 for z in y.split('*'):
@@ -105,18 +105,18 @@ class SymbolTable:
             return False
 
         ## Symbol inversion table
-        for x in xrange(len(self.symbols)):
+        for x in range(len(self.symbols)):
             self.symbols_inv[self.symbols[x]] = x
         del data
 
         # Prep rules_inv
         self.rules_inv = []
-        for x in xrange(len(self.symbols)):
+        for x in range(len(self.symbols)):
             self.rules_inv.append([])
 
         ## Get rules
         rule_probs = []
-        for x in xrange(len(filedata)):
+        for x in range(len(filedata)):
             temp = filedata[x].split(':')
             self.rules.append([0] * len(self.symbols))
             try:
@@ -144,7 +144,7 @@ class SymbolTable:
                     
         ## Are we using numbers or self.symbols for probabilities?
         self.use_numeric = True
-        for x in xrange(len(rule_probs)):
+        for x in range(len(rule_probs)):
             temp = str(rule_probs[x]).replace(' ','')
             try:
                 self.rules_probabilities.append(float(temp))
@@ -157,7 +157,7 @@ class SymbolTable:
         return True
     def state_to_string(self,state):
         temp = []
-        for x in xrange(len(state)):
+        for x in range(len(state)):
             if state[x] > 0:
                 if state[x] > 1:
                     temp.append('%d*%s'%(state[x],self.symbols[x]))
@@ -169,7 +169,7 @@ class SymbolTable:
             temp = []
         else:
             temp = [str(count)]
-        for x in xrange(len(prob)):
+        for x in range(len(prob)):
             if prob[x] > 0:
                 if prob[x] > 1:
                     temp.append('%s^%d'%(self.rules_probabilities[x],prob[x]))
@@ -220,7 +220,7 @@ class Node:
     def __init__(self,state,symbol_table):
         self.state = list(state)
         self.expandable = list(state)
-        self.selected = [0 for x in xrange(len(symbol_table.rules))]
+        self.selected = [0 for x in range(len(symbol_table.rules))]
         self.symbol_table = symbol_table
     def copy(self):
         new_node = Node(self.state,self.symbol_table)
@@ -240,7 +240,7 @@ class Node:
                 self.symbol_table.probability_to_string(self.selected))
     def expand(self,stack,shelf):
         expand = -1
-        for x in xrange(len(self.expandable)):
+        for x in range(len(self.expandable)):
             if self.expandable[x] > 0:
                 expand = x
                 break
@@ -250,7 +250,7 @@ class Node:
             stack_size = len(stack)
             for x in self.symbol_table.rules_inv[expand]: 
                     n = self.copy()
-                    for y in xrange(len(n.state)):
+                    for y in range(len(n.state)):
                         n.state[y] += self.symbol_table.rules[x][y]
                     n.selected[x] += 1
                     stack.append(n)
@@ -293,7 +293,7 @@ def multiply(base_prob_dict,prob_dict,result_dict):
 
 def add_prob_prob(dest_prob,src_prob):
     result = list(dest_prob)
-    for x in xrange(len(src_prob)):
+    for x in range(len(src_prob)):
         result[x] += src_prob[x]
     return result
 
@@ -345,7 +345,7 @@ def make_summary(summary,shelf,symbol_table):
     for state,prob_dict in shelf.iteritems():
         state = load(state)
         print "Progress: %4.1f %% \r"%(current_count * (100.0 / ((size * 2) + 1))),
-        for x in xrange(len(symbol_table.symbols)):
+        for x in range(len(symbol_table.symbols)):
             if (state[x] > max_count):
                 max_count = state[x]
             summary_index = dump((symbol_table.symbols[x], state[x]))
@@ -360,7 +360,7 @@ def print_summary(summary,size,symbol_table,filename):
     for x in symbol_table.symbols:
         print >> out_f,"\"%s\""%(x),
     print >> out_f
-    for count in xrange(size):
+    for count in range(size):
         print >> out_f,count,
         print "Progress: %4.1f %% \r"%((count + size) * (100.0 / ((size * 2) + 1))),
         for symbol in symbol_table.symbols:
@@ -478,7 +478,7 @@ if mpi_rank == 0:
 
     init_time = time.time()
     ## Perform expansion
-    for n in xrange(1,number_of_generations+1):
+    for n in range(1,number_of_generations+1):
         print 'Processing Generation',n
         print
 
