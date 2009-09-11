@@ -59,7 +59,7 @@ class SymbolTable:
     symbols = []
     symbols_inv = dict()
     rules = []
-    rules_inv = dict()
+    rules_inv = []
     rules_probabilities = []
     use_numeric = True
     generic_symbol_number = 1
@@ -115,6 +115,11 @@ class SymbolTable:
             self.symbols_inv[self.symbols[x]] = x
         del data
 
+        # Prep rules_inv
+        self.rules_inv = []
+        for x in range(len(self.symbols)):
+            self.rules_inv.append([])
+
         ## Get rules
         rule_probs = []
         for x in range(len(filedata)):
@@ -141,10 +146,7 @@ class SymbolTable:
                     if first < 0:
                         first = self.symbols_inv[subtemp[0]]
             self.rules[x][first] -= 1
-            try:
-                self.rules_inv[first].append(x)
-            except:
-                self.rules_inv[first] = [x]
+            self.rules_inv[first].append(x)
                     
         ## Are we using numbers or self.symbols for probabilities?
         self.use_numeric = True
