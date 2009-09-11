@@ -7,6 +7,7 @@ except:
     use_mpi = False
 
 from collections import deque
+from string import join
 import os
 import sys
 import getopt
@@ -121,7 +122,7 @@ class SymbolTable:
             try:
                 prob = temp[1].replace(' ','').rstrip('\n')
                 if prob:
-                    rule_probs.append('('+prob+')')
+                    rule_probs.append(prob)
                 else:
                     rule_probs.append('P%d'%len(self.rules))
             except:
@@ -155,31 +156,35 @@ class SymbolTable:
         ## Success!!
         return True
     def state_to_string(self,state):
-        result = ''
+        temp = []
         for x in range(len(state)):
             if state[x] > 0:
                 if state[x] > 1:
-                    result += ' %d*%s'%(state[x],self.symbols[x])
+                    temp.append('%d*%s'%(state[x],self.symbols[x]))
                 else:
-                    result += ' %s'%(self.symbols[x])
-        result = result[1:]
-        return result
+                    temp.append(self.symbols[x])
+        return join(temp)
     def probability_to_string(self,prob,count=1):
-        result = str(count)
+        if count == 1:
+            temp = []
+        else:
+            temp = [str(count)]
         for x in range(len(prob)):
             if prob[x] > 0:
                 if prob[x] > 1:
-                    result += '*%s^%d'%(self.rules_probabilities[x],prob[x])
+                    temp.append('%s^%d'%(self.rules_probabilities[x],prob[x]))
                 else:
-                    result += '*%s'%(self.rules_probabilities[x])
-        return str(result)
+                    temp.append(self.rules_probabilities[x])
+        return join(temp,'*')
     def probability_dict_to_string(self,prob_dict):
-        result = '0.0'
+        temp = []
         for prob,count in prob_dict.iteritems():
             prob = load(prob)
             if count > 0:
-                result += '+' + self.probability_to_string(prob,count)
-        return result
+                temp.append(self.probability_to_string(prob,count))
+        if len(temp) > 0:
+            return join(temp,'+')
+        return '0'
     def parse_state(self,input):
         temp = input.rstrip('\n').split(':')
         state = [0] * len(symbol_table.symbols)
