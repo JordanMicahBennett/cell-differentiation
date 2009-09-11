@@ -252,14 +252,14 @@ class Node:
         if expand >= 0:
             self.expandable[expand] -= 1
             self.state[expand] -= 1
-            try:
-                for x in self.symbol_table.rules_inv[expand]: 
+            stack_size = len(stack)
+            for x in self.symbol_table.rules_inv[expand]: 
                     n = self.copy()
                     for y in range(len(n.state)):
                         n.state[y] += self.symbol_table.rules[x][y]
                     n.selected[x] += 1
                     stack.append(n)
-            except:
+            if stack_size == len(stack):
                 self.state[expand] += 1
                 self.expandable[expand] = 0
                 stack.append(self)
@@ -285,45 +285,47 @@ def populate_shelf(shelf,filename,symbol_table):
     f.close()
     return
 
-## Sums two probability vectors
-def sum_prob(prob_one,prob_two):
-    result = list(prob_one)
-    for x in range(len(prob_two)):
-        result[x] += prob_two[x]
-    return result
-
-## Multiplies two probability dictionaries
+## Multiplies two shelf/dictionaries
 def multiply(base_prob_dict,prob_dict,result_dict):
     for new_prob,new_count in prob_dict.iteritems():
         new_prob = load(new_prob)
         for base_prob,base_count in base_prob_dict.iteritems():
             base_prob = load(base_prob)
             try:
-                result_dict[dump(sum_prob(base_prob,new_prob))] += base_count * new_count
+                result_dict[dump(add_prob_prob(base_prob,new_prob))] += base_count * new_count
             except:
-                result_dict[dump(sum_prob(base_prob,new_prob))] = base_count * new_count                
-## Integrate two dictionaries
-def integrate(dest_shelf,src_shelf):
-    for state,src_prob_dict in src_shelf.iteritems():
-        integrate_state(dest_shelf,state,src_prob_dict)
+                result_dict[dump(add_prob_prob(base_prob,new_prob))] = base_count * new_count                
+def add_prob_prob(prob_one,prob_two):
+    result = list(prob_one)
+    for x in range(len(prob_two)):
+        result[x] += prob_two[x]
+    return result
 
-## Integrate one (state,prob_dict) into a dictionary
-def integrate_state(dest_shelf,state,src_prob_dict):
+
+## Integrate two shelf/dictionaries
+def add_shelf_shelf(dest_shelf,src_shelf):
+    for state,src_prob_dict in src_shelf.iteritems():
+        add_shelf_prob_dict(dest_shelf,state,src_prob_dict)
+
+def add_shelf_prob_dict(dest_shelf,state,src_prob_dict):
     try:
         dest_prob_dict = dest_shelf[state]
     except:
         dest_prob_dict = dict()
-    integrate_prob(dest_prob_dict,src_prob_dict)
+    add_prob_dict_prob_dict(dest_prob_dict,src_prob_dict)
     dest_shelf[state] = dest_prob_dict
 
-def integrate_prob(dest_prob_dict,src_prob_dict):
+def add_prob_dict_prob_dict(dest_prob_dict,src_prob_dict):
     for src_prob,src_count in src_prob_dict.iteritems():
-        try:
-            dest_count = dest_prob_dict[src_prob]
-        except:
-            dest_count = 0
-        dest_prob_dict[src_prob] = dest_count + src_count
-    
+        add_prob_dict_prob(dest_prob_dict,src_prob,src_count)
+
+def add_prob_dict_prob(dest_prob_dict,src_prob,src_count):
+    try:
+        dest_count = dest_prob_dict[src_prob]
+    except:
+        dest_count = 0
+    dest_prob_dict[src_prob] = dest_count + src_count
+
 ## Print states to a file
 def print_states(shelf,symbol_table,filename):
     out_f = open(filename,'w')
@@ -360,12 +362,7 @@ def make_summary(summary,shelf,symbol_table):
             if (state[x] > max_count):
                 max_count = state[x]
             summary_index = dump((symbol_table.symbols[x], state[x]))
-            try:
-                sum_prob_dict = summary[summary_index]
-            except:
-                sum_prob_dict = dict()
-            integrate_prob(sum_prob_dict,prob_dict)
-            summary[summary_index] = sum_prob_dict
+            add_shelf_prob_dict(summary,summary_index,prob_dict)
         current_count += 1
     return max_count+1
 
@@ -665,7 +662,7 @@ else:
         elif message == 'COMBINE':
             filename = comm.recv(source=0,tag=3)
             root_shelf = shelve.open(filename)
-            integrate(root_shelf,gen_shelf)
+            add_shelf_shelf(root_shelf,gen_shelf)
             root_shelf.close()
 #            del gen_shelf
 #            gen_shelf = dict()
