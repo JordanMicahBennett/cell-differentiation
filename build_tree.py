@@ -6,12 +6,6 @@ try:
 except:
     use_mpi = False
 
-sympy_available = True
-try:
-    from sympy import simplify
-except:
-    sympy_available = False
-
 from collections import deque
 import os
 import sys
@@ -46,8 +40,7 @@ def rootexit():
 
 def usage():
     print
-    print 'Usage:',sys.argv[0],' [-s] [-e <epsilon>] <num_generations> <rule_file> <init_file>'
-    print '    -s | --simplify : simplify the probabilities symbolically'
+    print 'Usage:',sys.argv[0],' <num_generations> <rule_file> <init_file>'
 #    print '    -e | --epsilon= : provide numerical cutoff for probabilities'
     print
     rootexit()
@@ -151,10 +144,7 @@ class SymbolTable:
         ## Are we using numbers or self.symbols for probabilities?
         self.use_numeric = True
         for x in range(len(rule_probs)):
-            if sympy_available:
-                temp = str(simplify(rule_probs[x])).replace(' ','')
-            else:
-                temp = str(rule_probs[x]).replace(' ','')
+            temp = str(rule_probs[x]).replace(' ','')
             try:
                 self.rules_probabilities.append(float(temp))
             except:
@@ -179,7 +169,7 @@ class SymbolTable:
         for x in range(len(prob)):
             if prob[x] > 0:
                 if prob[x] > 1:
-                    result += '*%s**%d'%(self.rules_probabilities[x],prob[x])
+                    result += '*%s^%d'%(self.rules_probabilities[x],prob[x])
                 else:
                     result += '*%s'%(self.rules_probabilities[x])
         return str(result)
@@ -285,7 +275,7 @@ def populate_shelf(shelf,filename,symbol_table):
     f.close()
     return
 
-## Multiplies two shelf/dictionaries
+##Multiplies two probability dictionaries
 def multiply(base_prob_dict,prob_dict,result_dict):
     for new_prob,new_count in prob_dict.iteritems():
         new_prob = load(new_prob)
@@ -294,13 +284,13 @@ def multiply(base_prob_dict,prob_dict,result_dict):
             try:
                 result_dict[dump(add_prob_prob(base_prob,new_prob))] += base_count * new_count
             except:
-                result_dict[dump(add_prob_prob(base_prob,new_prob))] = base_count * new_count                
-def add_prob_prob(prob_one,prob_two):
-    result = list(prob_one)
-    for x in range(len(prob_two)):
-        result[x] += prob_two[x]
-    return result
+                result_dict[dump(add_prob_prob(base_prob,new_prob))] = base_count * new_count
 
+def add_prob_prob(dest_prob,src_prob):
+    result = list(dest_prob)
+    for x in range(len(src_prob)):
+        result[x] += src_prob[x]
+    return result
 
 ## Integrate two shelf/dictionaries
 def add_shelf_shelf(dest_shelf,src_shelf):
@@ -331,20 +321,12 @@ def print_states(shelf,symbol_table,filename):
     out_f = open(filename,'w')
     max_count = len(shelf)+1
     current_count = 0
-    if use_simplify:
-        for state,prob_dict in shelf.iteritems():
-            state = load(state)
-            print "Progress: %4.1f %% \r"%(current_count * (100.0 / max_count)),
-            sys.stdout.flush()
-            print >> out_f,symbol_table.state_to_string(state),':',str(simplify(symbol_table.probability_dict_to_string(prob_dict))).replace(' ','').replace('**','^')
-            current_count += 1
-    else:
-        for state,prob_dict in shelf.iteritems():
-            state = load(state)
-            print "Progress: %4.1f %% \r"%(current_count * (100.0 / max_count)),
-            sys.stdout.flush()
-            print >> out_f,symbol_table.state_to_string(state),':',symbol_table.probability_dict_to_string(prob_dict).replace('**','^')
-            current_count += 1
+    for state,prob_dict in shelf.iteritems():
+        state = load(state)
+        print "Progress: %4.1f %% \r"%(current_count * (100.0 / max_count)),
+        sys.stdout.flush()
+        print >> out_f,symbol_table.state_to_string(state),':',symbol_table.probability_dict_to_string(prob_dict)
+        current_count += 1
     print "Progress: %4.1f %% \r"%(100.0),
     sys.stdout.flush()
     out_f.close()
@@ -367,7 +349,6 @@ def make_summary(summary,shelf,symbol_table):
     return max_count+1
 
 ## Print summary table
-
 def print_summary(summary,size,symbol_table,filename):
     out_f = open(filename,'w')
     ## Header
@@ -383,10 +364,7 @@ def print_summary(summary,size,symbol_table,filename):
                 prob_dict = summary[summary_index]
             except:
                 prob_dict = dict()
-            if use_simplify:
-                print >> out_f,"\"%s\""%(str(simplify(symbol_table.probability_dict_to_string(prob_dict))).replace(' ','').replace('**','^')),
-            else:
-                print >> out_f,"\"%s\""%(symbol_table.probability_dict_to_string(prob_dict).replace('**','^')),
+            print >> out_f,"\"%s\""%(symbol_table.probability_dict_to_string(prob_dict)),
         print >> out_f
     out_f.close()
     print "Progress: %4.1f %% \r"%(100.0),
@@ -414,7 +392,6 @@ symbol_table = SymbolTable()
 
 ## Root process
 if mpi_rank == 0:
-    use_simplify = False
 
     ## Calculate default epsilon - to machine precision
     epsilon = 1
@@ -423,17 +400,12 @@ if mpi_rank == 0:
 
     ## Parse options
     try:
-        opts, args = getopt.getopt(sys.argv[1:],'se:',['simplify','epsilon='])
+        opts, args = getopt.getopt(sys.argv[1:],'e:',['simplify','epsilon='])
     except getopt.GetoptError:
         usage()
 
     for opt,arg in opts:
-        if opt in ('-s','--simplify'):
-            if not sympy_available:
-                sys.stderr.write('\nWARNING! Simplification requested but Sympy module not found!\n\n')
-            else:
-                use_simplify = True
-        elif opt in ('-e','--epsilon'):
+        if opt in ('-e','--epsilon'):
             try:
                 new_epsilon = float(arg)
             except:
