@@ -249,11 +249,11 @@ class Node:
             self.state[expand] -= 1
             stack_size = len(stack)
             for x in self.symbol_table.rules_inv[expand]: 
-                    n = self.copy()
-                    for y in range(len(n.state)):
-                        n.state[y] += self.symbol_table.rules[x][y]
-                    n.selected[x] += 1
-                    stack.append(n)
+                n = self.copy()
+                for y in range(len(n.state)):
+                    n.state[y] += self.symbol_table.rules[x][y]
+                n.selected[x] += 1
+                stack.append(n)
             if stack_size == len(stack):
                 self.state[expand] += 1
                 self.expandable[expand] = 0
