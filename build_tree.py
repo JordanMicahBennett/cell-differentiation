@@ -220,7 +220,7 @@ class Node:
     def __init__(self,state,symbol_table):
         self.state = list(state)
         self.expandable = list(state)
-        self.selected = [0 for x in range(len(symbol_table.rules))]
+        self.selected = [0] * len(symbol_table.rules)
         self.symbol_table = symbol_table
     def copy(self):
         new_node = Node(self.state,self.symbol_table)
