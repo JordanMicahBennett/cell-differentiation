@@ -162,19 +162,10 @@ class SymbolTable:
             temp = []
         else:
             temp = [str(count)]
-        for x in range(len(prob)):
-            if prob[x] > 0:
-                if prob[x] > 1:
-                    temp.append('%s^%d'%(self.rules_probabilities[x],prob[x]))
-                else:
-                    temp.append(self.rules_probabilities[x])
+        temp.extend('%s^%d'%(self.rules_probabilities[x],prob[x]) for x in range(len(prob)) if prob[x] > 0)
         return join(temp,'*')
     def probability_dict_to_string(self,prob_dict):
-        temp = []
-        for prob,count in prob_dict.iteritems():
-            prob = load(prob)
-            if count > 0:
-                temp.append(self.probability_to_string(prob,count))
+        temp = [self.probability_to_string(load(prob),count) for prob,count in prob_dict.iteritems() if count > 0]
         if len(temp) > 0:
             return join(temp,'+')
         return '0'
