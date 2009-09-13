@@ -156,14 +156,7 @@ class SymbolTable:
         ## Success!!
         return True
     def state_to_string(self,state):
-        temp = []
-        for x in range(len(state)):
-            if state[x] > 0:
-                if state[x] > 1:
-                    temp.append('%d*%s'%(state[x],self.symbols[x]))
-                else:
-                    temp.append(self.symbols[x])
-        return join(temp)
+        return join(['%d*%s'%(state[x],self.symbols[x]) for x in range(len(state)) if state[x] > 0])
     def probability_to_string(self,prob,count=1):
         if count == 1:
             temp = []
