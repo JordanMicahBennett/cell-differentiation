@@ -6,6 +6,8 @@ try:
 except:
     use_mpi = False
 
+from sympy import simplify
+from sympy import Symbol
 from collections import deque
 from string import join
 import os
@@ -42,7 +44,7 @@ def rootexit():
 def usage():
     print
     print 'Usage:',sys.argv[0],' <num_generations> <rule_file> <init_file>'
-#    print '    -e | --epsilon= : provide numerical cutoff for probabilities'
+    print '    -e | --epsilon= : provide numerical cutoff for probabilities'
     print
     rootexit()
 
@@ -145,7 +147,7 @@ class SymbolTable:
         ## Are we using numbers or self.symbols for probabilities?
         self.use_numeric = True
         for x in range(len(rule_probs)):
-            temp = str(rule_probs[x]).replace(' ','')
+            temp = str(simplify(rule_probs[x])).replace(' ','')
             try:
                 self.rules_probabilities.append(float(temp))
             except:
@@ -402,10 +404,11 @@ if mpi_rank == 0:
     epsilon = 1
     while epsilon / 2.0  + 1.0 > 1.0:
         epsilon = epsilon / 2.0
+    epsilon_1 = 1.0 - epsilon
 
     ## Parse options
     try:
-        opts, args = getopt.getopt(sys.argv[1:],'e:',['simplify','epsilon='])
+        opts, args = getopt.getopt(sys.argv[1:],'e:',['epsilon='])
     except getopt.GetoptError:
         usage()
 
@@ -475,6 +478,8 @@ if mpi_rank == 0:
     if use_mpi:
         st = symbol_table.pack()
         st = comm.bcast(st,root=0)
+        epsilon = comm.bcast(epsilon,root=0)
+        epsilon_1 = comm.bcast(epsilon_1,root=0)
 
     init_time = time.time()
     ## Perform expansion
@@ -607,7 +612,11 @@ if mpi_rank == 0:
 ## Worker process
 else:
     st = None
+    epsilon = None
+    epsilon_1 = None
     st = comm.bcast(st,root=0)
+    epsilon = comm.bcast(epsilon,root=0)
+    epsilon_1 = comm.bcast(epsilon_1,root=0)
 
     if not st:
         sys.exit()
