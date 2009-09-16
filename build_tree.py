@@ -187,6 +187,15 @@ class SymbolTable:
         if len(temp) > 0:
             return join(temp,'+')
         return '0'
+    def probability_dict_to_c_string(self,prob_dict):
+        temp = []
+        for prob,count in prob_dict.iteritems():
+            prob = load(prob)
+            if count > 0:
+                temp.append(self.probability_to_string(prob,count))
+        if len(temp) > 0:
+            return join(temp,'+\n')
+        return '0'
     def parse_state(self,input):
         temp = input.rstrip('\n').split(':')
         state = [0] * len(symbol_table.symbols)
@@ -387,34 +396,35 @@ def print_c_code(summary,size,symbol_table,filename):
         unique_symbols = unique_symbols.union(simplify(rule_prob).atoms(Symbol))
     unique_symbols = list(unique_symbols)
 
-    print >> f,'#include <stdio.h>'
-    print >> f,'#include <stdlib.h>'
-    print >> f,'int main(int argc, char* argv[]) {'
-    print >> f,'if (argc != %d) {'%(len(unique_symbols+1))
-    print >> f,'printf(\"Usage: %s',
-    for symbol in unique_symbols: print >> f,'%s '%(symbol),
-    print >> f,'\\n\";'
-    print >> f,'return -1; }'
+    print >> out_f,'#include <stdio.h>'
+    print >> out_f,'#include <stdlib.h>'
+    print >> out_f,'int main(int argc, char* argv[]) {'
+    print >> out_f,'if (argc != %d) {'%(len(unique_symbols+1))
+    print >> out_f,'printf(\"\\nUsage: %s',
+    for symbol in unique_symbols: print >> out_f,'%s '%(symbol),
+    print >> out_f,'\\n\\n\";'
+    print >> out_f,'return -1; }'
     for x in range(len(unique_symbols)):
-        print >> f,'double %s = atof(argv[%d]);'%(unique_symbols[x],x+1)
-    print >> f,'double _result = 0.0;'
+        print >> out_f,'double %s = atof(argv[%d]);'%(unique_symbols[x],x+1)
+    print >> out_f,'double _result;'
 
     for x in symbol_table.symbols:
-        print >> out_f,"\"%s\""%(x),
-    print >> out_f
+        print >> out_f,'printf(\"%s \");'%(x)
+    print >> out_f,'printf(\"\\n\");'
     for count in range(size):
-        print >> out_f,count,
-        print "Progress: %4.1f %% \r"%((count + size) * (100.0 / ((size * 2) + 1))),
+        print >> out_f,'printf(\"%d \");'%count
+        print "Code Generation Progress: %4.1f %% \r"%(count * (100.0 / (size + 1))),
         for symbol in symbol_table.symbols:
             summary_index = dump((symbol,count))
             try:
                 prob_dict = summary[summary_index]
             except:
                 prob_dict = dict()
-            print >> out_f,"\"%s\""%(symbol_table.probability_dict_to_string(prob_dict)),
-        print >> out_f
+            print >> out_f,'printf\"%f','\",);'%(symbol_table.probability_dict_to_c_string(prob_dict))
+        print >> out_f,'printf(\"\\n\");'
+    print >> out_f,'return 0; }'
     out_f.close()
-    print "Progress: %4.1f %% \r"%(100.0),
+    print "Code Generation Progress: %4.1f %% \r"%(100.0),
 
 def expand_state(state_node,base_prob_dict,gen_shelf):
     state_shelf = dict()
@@ -614,9 +624,15 @@ if mpi_rank == 0:
 
         ## Create summary table
         summary = shelve.open('.summary_%03d.%d'%(n,os.getpid()))
+        sum_size = make_summary(summary,gen_shelf,symbol_table)
         print_summary(summary,
-                      make_summary(summary,gen_shelf,symbol_table),
+                      sum_size,
                       symbol_table,'generation_%03d_summary.txt'%(n))
+
+        print_c_code(summary,
+                     sum_size,
+                     symbol_table,'generation_%03d_summary.c'%(n))        
+
         summary.close()
         for filename in glob.glob('.summary_%03d.%d*'%(n,os.getpid())):
             os.remove(filename)
