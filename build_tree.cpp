@@ -153,12 +153,24 @@ struct Node {
 
   void Recv(int source, int* i_buffer, char* c_buffer) {
     int i;
+    // State
     MPI::COMM_WORLD.Recv(i_buffer, 1, MPI::INT, source, 0);
     i = *i_buffer;
     MPI::COMM_WORLD.Recv(i_buffer, i, MPI::INT, source, 0);
     for (int x = 0; x < i; x ++)
       state.push_back(i_buffer[x]);
-
+    // Expandable
+    MPI::COMM_WORLD.Recv(i_buffer, 1, MPI::INT, source, 0);
+    i = *i_buffer;
+    MPI::COMM_WORLD.Recv(i_buffer, i, MPI::INT, source, 0);
+    for (int x = 0; x < i; x ++)
+      expandable.push_back(i_buffer[x]);
+    // Selected
+    MPI::COMM_WORLD.Recv(i_buffer, 1, MPI::INT, source, 0);
+    i = *i_buffer;
+    MPI::COMM_WORLD.Recv(i_buffer, i, MPI::INT, source, 0);
+    for (int x = 0; x < i; x ++)
+      selected.push_back(i_buffer[x]);
   }
 
 };
