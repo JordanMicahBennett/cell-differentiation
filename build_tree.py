@@ -6,6 +6,8 @@ try:
 except:
     use_mpi = False
 
+from sympy import simplify
+from sympy import Symbol
 from collections import deque
 from string import join
 import os
@@ -357,6 +359,46 @@ def make_summary(summary,shelf,symbol_table):
 def print_summary(summary,size,symbol_table,filename):
     out_f = open(filename,'w')
     ## Header
+    for x in symbol_table.symbols:
+        print >> out_f,"\"%s\""%(x),
+    print >> out_f
+    for count in range(size):
+        print >> out_f,count,
+        print "Progress: %4.1f %% \r"%((count + size) * (100.0 / ((size * 2) + 1))),
+        for symbol in symbol_table.symbols:
+            summary_index = dump((symbol,count))
+            try:
+                prob_dict = summary[summary_index]
+            except:
+                prob_dict = dict()
+            print >> out_f,"\"%s\""%(symbol_table.probability_dict_to_string(prob_dict)),
+        print >> out_f
+    out_f.close()
+    print "Progress: %4.1f %% \r"%(100.0),
+
+## Print summary table
+def print_c_code(summary,size,symbol_table,filename):
+    out_f = open(filename,'w')
+    ## Header
+
+    ## Find unique symbols in rule probabilities
+    unique_symbols = set()
+    for rule_prob in symbol_table.rules_probabilities:
+        unique_symbols = unique_symbols.union(simplify(rule_prob).atoms(Symbol))
+    unique_symbols = list(unique_symbols)
+
+    print >> f,'#include <stdio.h>'
+    print >> f,'#include <stdlib.h>'
+    print >> f,'int main(int argc, char* argv[]) {'
+    print >> f,'if (argc != %d) {'%(len(unique_symbols+1))
+    print >> f,'printf(\"Usage: %s',
+    for symbol in unique_symbols: print >> f,'%s '%(symbol),
+    print >> f,'\\n\";'
+    print >> f,'return -1; }'
+    for x in range(len(unique_symbols)):
+        print >> f,'double %s = atof(argv[%d]);'%(unique_symbols[x],x+1)
+    print >> f,'double _result = 0.0;'
+
     for x in symbol_table.symbols:
         print >> out_f,"\"%s\""%(x),
     print >> out_f
