@@ -686,7 +686,7 @@ if mpi_rank == 0:
     print >> f
     for n in range(1,number_of_generations+1):
         print >> f,'generation_%03d_summary: generation_%03d_summary.c'%(n,n)
-        print >> f,'\tcc -o generation_%03d_summary generation_%03d_summary.c -lm'%(n,n)
+        print >> f,'\tcc -O3 -o generation_%03d_summary generation_%03d_summary.c -lm'%(n,n)
     f.close()
 
     if use_mpi:
