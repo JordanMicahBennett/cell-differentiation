@@ -426,7 +426,7 @@ def print_c_code(summary,size,symbol_table,filename):
         print >> out_f,'printf(\"%s \");'%(x)
     print >> out_f,'printf(\"\\n\");'
     for count in range(size):
-        print >> out_f,'printf(\"%d \");'%count
+#         print >> out_f,'printf(\"%d \");'%count
         print "Code Generation Progress: %4.1f %% \r"%(count * (100.0 / (size + 1))),
         for symbol in symbol_table.symbols:
             summary_index = dump((symbol,count))
