@@ -9,6 +9,7 @@ except:
 from sympy import simplify
 from sympy import Symbol
 from collections import deque
+from collections import defaultdict
 from string import join
 import os
 import sys
@@ -283,14 +284,9 @@ class Node:
                 stack.append(self)
         else:
             try:
-                prob_dict = shelf[dump(self.state)]
-                try:
-                    prob_dict[dump(self.selected)] += 1
-                except:
-                    prob_dict[dump(self.selected)] = 1
+                shelf[dump(self.state)][dump(self.selected)] += 1
             except:
-                prob_dict = { dump(self.selected) : 1 }
-            shelf[dump(self.state)] = prob_dict
+                shelf[dump(self.state)][dump(self.selected)] = 1
         return None
 
 ## Pulls some initial states from a file and populate the shelf
@@ -441,7 +437,7 @@ def print_c_code(summary,size,symbol_table,filename):
     print "Code Generation Progress: %4.1f %% \r"%(100.0),
 
 def expand_state(state_node,base_prob_dict,gen_shelf):
-    state_shelf = dict()
+    state_shelf = defaultdict(dict)
     stack = deque()
     stack.append(state_node)
 
