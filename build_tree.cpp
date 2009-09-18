@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <iostream>
+#include <fstream>
 #include <vector>
 #include <map>
 
@@ -16,6 +17,18 @@ struct SymbolTable {
   vector<vector<int> > rules;
   vector<vector<int > > rules_inv;
   vector<string> rules_probabilities;
+
+  bool read_rules(string rule_file) {
+    ifstream f;
+    f.open(rule_file.c_str());
+    string line;
+    vector<string> filedata;
+
+    // Grab lines from rule file
+    while (!getline(f,line).eof()) filedata.push_back(line);
+
+    
+  }
 
   void Bcast_Root(int* i_buffer, char* c_buffer) {
     // Symbols
