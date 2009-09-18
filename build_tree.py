@@ -10,6 +10,8 @@ from sympy import simplify
 from sympy import Symbol
 from collections import deque
 from string import join
+from math import log
+from math import floor
 import os
 import sys
 import getopt
@@ -468,7 +470,6 @@ if mpi_rank == 0:
     epsilon = 1
     while epsilon / 2.0  + 1.0 > 1.0:
         epsilon = epsilon / 2.0
-    epsilon_1 = 1.0 - epsilon
 
     ## Parse options
     try:
@@ -492,6 +493,8 @@ if mpi_rank == 0:
                 sys.stderr.write('\nERROR! Epsilon must be less than one.\n\n')
                 rootexit()
             epsilon = new_epsilon
+
+    max_exp = int(floor(log(epsilon)/log(1-epsilon)))
                 
     ## Check for correct number of arguments
     if len(args) != 3:
