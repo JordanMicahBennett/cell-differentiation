@@ -1,11 +1,5 @@
 #!/usr/bin/python -u
 
-use_mpi = True
-try:
-    from mpi4py import MPI
-except:
-    use_mpi = False
-
 from sympy import simplify
 from sympy import Symbol
 from collections import deque
@@ -19,17 +13,6 @@ import time
 import shelve
 import cPickle
 import glob
-
-mpi_rank = 0
-mpi_size = 1
-comm = None
-if use_mpi:
-    comm = MPI.COMM_WORLD
-    mpi_rank = comm.Get_rank()
-    mpi_size = comm.Get_size()
-
-if mpi_size == 1:
-    use_mpi = False
 
 ## Pickling - got any vinegar?
 def dump(object):
@@ -456,284 +439,176 @@ def expand_state(state_node,base_prob_dict,gen_shelf):
 
 symbol_table = SymbolTable()
 
-## Root process
-if mpi_rank == 0:
 
-    ## Calculate default epsilon - to machine precision
-    epsilon = 1
-    while epsilon / 2.0  + 1.0 > 1.0:
-        epsilon = epsilon / 2.0
+## Calculate default epsilon - to machine precision
+epsilon = 1
+while epsilon / 2.0  + 1.0 > 1.0:
+    epsilon = epsilon / 2.0
 
-    ## Parse options
-    try:
-        opts, args = getopt.getopt(sys.argv[1:],'e:',['simplify','epsilon='])
-    except getopt.GetoptError:
-        usage()
+## Parse options
+try:
+    opts, args = getopt.getopt(sys.argv[1:],'e:',['simplify','epsilon='])
+except getopt.GetoptError:
+    usage()
 
-    for opt,arg in opts:
-        if opt in ('-e','--epsilon'):
-            try:
-                new_epsilon = float(arg)
-            except:
-                sys.stderr.write('\nERROR! Provided epsilon not an real value: %s\n\n'%(arg))
-                rootexit()
-            if new_epsilon <= 0.0:
-                sys.stderr.write('\nERROR! Epsilon must be a positive value.\n\n')
-                rootexit()
-            elif new_epsilon < epsilon:
-                sys.stderr.write('\nWARNING! Provided epsilon is less than machine precision: %s\n\n'%(arg))
-            elif new_epsilon >= 1.0:
-                sys.stderr.write('\nERROR! Epsilon must be less than one.\n\n')
-                rootexit()
-            epsilon = new_epsilon
-                
-    ## Check for correct number of arguments
-    if len(args) != 3:
-        usage()
-        
-    number_of_generations = 0
-    rule_file = args[1]
-    init_file = args[2]
+for opt,arg in opts:
+    if opt in ('-e','--epsilon'):
+        try:
+            new_epsilon = float(arg)
+        except:
+            sys.stderr.write('\nERROR! Provided epsilon not an real value: %s\n\n'%(arg))
+            rootexit()
+        if new_epsilon <= 0.0:
+            sys.stderr.write('\nERROR! Epsilon must be a positive value.\n\n')
+            rootexit()
+        elif new_epsilon < epsilon:
+            sys.stderr.write('\nWARNING! Provided epsilon is less than machine precision: %s\n\n'%(arg))
+        elif new_epsilon >= 1.0:
+            sys.stderr.write('\nERROR! Epsilon must be less than one.\n\n')
+            rootexit()
+        epsilon = new_epsilon
 
-    try :
-        number_of_generations = int(args[0])
-    except:
-        sys.stderr.write('\nERROR! Provided generations not an integer: %s\n\n'%(sys.argv[1]))
-        rootexit()
+## Check for correct number of arguments
+if len(args) != 3:
+    usage()
 
-    if number_of_generations <= 0:
-        sys.stderr.write('\nERROR! Number of generations must be greater than zero.\n\n')
-        rootexit()
+number_of_generations = 0
+rule_file = args[1]
+init_file = args[2]
 
-    if not os.path.isfile(rule_file):
-        sys.stderr.write('\nERROR! Rules file does not exist: %s\n\n'%(rule_file))
-        rootexit()
+try :
+    number_of_generations = int(args[0])
+except:
+    sys.stderr.write('\nERROR! Provided generations not an integer: %s\n\n'%(sys.argv[1]))
+    rootexit()
 
-    if not os.path.isfile(init_file):
-        sys.stderr.write('\nERROR! Initial state file does not exist: %s\n\n'%(init_file))
-        rootexit()
+if number_of_generations <= 0:
+    sys.stderr.write('\nERROR! Number of generations must be greater than zero.\n\n')
+    rootexit()
 
-    ## Minimal checking finished --- we are a go!
+if not os.path.isfile(rule_file):
+    sys.stderr.write('\nERROR! Rules file does not exist: %s\n\n'%(rule_file))
+    rootexit()
 
-    ## Create stack
-    last_gen = shelve.open('.generation_%03d.%d'%(0,os.getpid()))
+if not os.path.isfile(init_file):
+    sys.stderr.write('\nERROR! Initial state file does not exist: %s\n\n'%(init_file))
+    rootexit()
 
-    ## Read rules into symbol_table
-    if not symbol_table.read_rules(rule_file):
-        rootexit()
+## Minimal checking finished --- we are a go!
 
-    ## Read initial states
-    populate_shelf(last_gen,init_file,symbol_table)
+## Create stack
+last_gen = shelve.open('.generation_%03d.%d'%(0,os.getpid()))
 
-    if len(last_gen) <= 0:
-        sys.stderr.write('\nERROR! Initial state file has no data: %s\n\n'%(init_file))
-        rootexit()
+## Read rules into symbol_table
+if not symbol_table.read_rules(rule_file):
+    rootexit()
 
-    ## Extra line
+## Read initial states
+populate_shelf(last_gen,init_file,symbol_table)
+
+if len(last_gen) <= 0:
+    sys.stderr.write('\nERROR! Initial state file has no data: %s\n\n'%(init_file))
+    rootexit()
+
+## Extra line
+print
+
+init_time = time.time()
+## Perform expansion
+for n in range(1,number_of_generations+1):
+    print 'Processing Generation',n
     print
 
-    ## Good to go.. broadcast the symbol table!
-    if use_mpi:
-        st = symbol_table.pack()
-        st = comm.bcast(st,root=0)
+    gen_shelf = shelve.open('.generation_%03d.%d'%(n,os.getpid()))
 
-    init_time = time.time()
-    ## Perform expansion
-    for n in range(1,number_of_generations+1):
-        print 'Processing Generation',n
-        print
+    ## Drop garbage before this generation
+    gc.collect()
 
-        gen_shelf = shelve.open('.generation_%03d.%d'%(n,os.getpid()))
+    gen_start = time.time()
 
-        ## Drop garbage before this generation
+    ## Read previous state file (or initial state file provided) and
+    ## fill the stack with the states one at a time (expanding into
+    ## temporary file.)
+    event_start = time.time()
+
+    ## Send out work
+    gen_size = len(last_gen) + 1
+    gen_count = 1
+    for state,base_prob_dict in last_gen.iteritems():
+
         gc.collect()
 
-        gen_start = time.time()
+        print 'Expansion Progress: %4.1f %% \r'%(gen_count * (100.0 / gen_size)),
+        sys.stdout.flush()
 
-        ## Read previous state file (or initial state file provided) and
-        ## fill the stack with the states one at a time (expanding into
-        ## temporary file.)
-        event_start = time.time()
+        state = Node(load(state),symbol_table)
+        expand_state(state,base_prob_dict,gen_shelf)
 
-        ## Send out work
-        gen_size = len(last_gen) + 1
-        gen_count = 1
-        procs = set(range(1,mpi_size))
-        working = set()
-        for state,base_prob_dict in last_gen.iteritems():
+        gen_count += 1
 
-            gc.collect()
+    print 'Expansion Progress: %4.1f %% \r'%(100.0)
 
-            print 'Expansion Progress: %4.1f %% \r'%(gen_count * (100.0 / gen_size)),
-            sys.stdout.flush()
+    event_end = time.time()
+    print 'Time elapsed:',(event_end - event_start)
 
-            if use_mpi:
-                dest = comm.recv(source=MPI.ANY_SOURCE,tag=1)
-                comm.send('EXPAND',dest=dest,tag=2)
-                comm.send(state,dest=dest,tag=3)
-                comm.send(base_prob_dict,dest=dest,tag=4)
+    print 'Post-processing state information...'
+    event_start = time.time()
 
-                working = working.union([dest])
-            else:
-                state = Node(load(state),symbol_table)
-                expand_state(state,base_prob_dict,gen_shelf)
-                
-            gen_count += 1
+    ## Catalog the current generation
+    print_states(gen_shelf,symbol_table,'generation_%03d.txt'%(n))
 
-        print 'Expansion Progress: %4.1f %% \r'%(100.0)
+    event_end = time.time()
+    print
+    print 'Time elapsed:',(event_end - event_start)
+    print 'Processing summary information...'
+    event_start = time.time()
 
-        if use_mpi:
-            gen_shelf.close()
-            sleeping = set()
-            gen_size = mpi_size + 1
-            gen_count = 1
-            ## Gather all results
-            while len(working) > 0:
+    ## Create summary table
+    summary = shelve.open('.summary_%03d.%d'%(n,os.getpid()))
+    sum_size = make_summary(summary,gen_shelf,symbol_table)
+    print
 
-                gc.collect()
+    print_summary(summary,
+                  sum_size,
+                  symbol_table,'generation_%03d_summary.txt'%(n))
+    print
 
-                print 'Gather Progress: %4.1f %% \r'%(gen_count * (100.0 / gen_size)),
+    print_c_code(summary,
+                 sum_size,
+                 symbol_table,'generation_%03d_summary.c'%(n))        
+    print
 
-                while 1:
-                    dest = comm.recv(source=MPI.ANY_SOURCE,tag=1)
-                    if dest in working:
-                        break
-                    comm.send('WAIT',dest=dest,tag=2)
-                    sleeping = sleeping.union([dest])
-
-                comm.send('COMBINE',dest=dest,tag=2)
-                comm.send('.generation_%03d.%d'%(n,os.getpid()),dest=dest,tag=3)
-                comm.recv(source=dest,tag=4)
-
-                working.remove(dest)
-
-                gen_count += 1
-
-            for x in sleeping:
-                comm.send('WAKEUP',dest=x,tag=3)
-                
-            gen_shelf = shelve.open('.generation_%03d.%d'%(n,os.getpid()))
-
-            print 'Gather Progress: %4.1f %% \r'%(100.0)
-
-        event_end = time.time()
-        print 'Time elapsed:',(event_end - event_start)
-
-        print 'Post-processing state information...'
-        event_start = time.time()
-
-        ## Catalog the current generation
-        print_states(gen_shelf,symbol_table,'generation_%03d.txt'%(n))
-
-        event_end = time.time()
-        print
-        print 'Time elapsed:',(event_end - event_start)
-        print 'Processing summary information...'
-        event_start = time.time()
-
-        ## Create summary table
-        summary = shelve.open('.summary_%03d.%d'%(n,os.getpid()))
-        sum_size = make_summary(summary,gen_shelf,symbol_table)
-        print
-
-        print_summary(summary,
-                      sum_size,
-                      symbol_table,'generation_%03d_summary.txt'%(n))
-        print
-
-        print_c_code(summary,
-                     sum_size,
-                     symbol_table,'generation_%03d_summary.c'%(n))        
-        print
-
-        summary.close()
-        for filename in glob.glob('.summary_%03d.%d*'%(n,os.getpid())):
-            os.remove(filename)
-
-        event_end = time.time()
-        gen_end = time.time()
-        print 'Time elapsed:',(event_end - event_start)
-        print 'Time for this generation:',(gen_end - gen_start)
-        print
-
-        ## Promote to next generation
-        last_gen.close()
-        for filename in glob.glob('.generation_%03d.%d*'%(n-1,os.getpid())):
-            os.remove(filename)
-        last_gen = gen_shelf
-
-    end_time = time.time()
-    print 'Total elapsed time:',(end_time - init_time)
-
-    ## Finalize results
-    last_gen.close()
-    for filename in glob.glob('.generation_%03d.%d*'%(number_of_generations,os.getpid())):
+    summary.close()
+    for filename in glob.glob('.summary_%03d.%d*'%(n,os.getpid())):
         os.remove(filename)
 
-    f = open('Makefile','w')
-    print >> f,'all:',
-    for n in range(1,number_of_generations+1):
-        print >> f,'generation_%03d_summary'%(n),
-    print >> f
-    print >> f
-    for n in range(1,number_of_generations+1):
-        print >> f,'generation_%03d_summary: generation_%03d_summary.c'%(n,n)
-        print >> f,'\tcc -o generation_%03d_summary generation_%03d_summary.c -lm'%(n,n)
-    f.close()
+    event_end = time.time()
+    gen_end = time.time()
+    print 'Time elapsed:',(event_end - event_start)
+    print 'Time for this generation:',(gen_end - gen_start)
+    print
 
-    if use_mpi:
-        for proc in procs:
-            comm.send('EXIT',dest=proc,tag=2)
+    ## Promote to next generation
+    last_gen.close()
+    for filename in glob.glob('.generation_%03d.%d*'%(n-1,os.getpid())):
+        os.remove(filename)
+    last_gen = gen_shelf
 
-## Worker process
-else:
-    st = None
-    st = comm.bcast(st,root=0)
+end_time = time.time()
+print 'Total elapsed time:',(end_time - init_time)
 
-    if not st:
-        sys.exit()
+## Finalize results
+last_gen.close()
+for filename in glob.glob('.generation_%03d.%d*'%(number_of_generations,os.getpid())):
+    os.remove(filename)
 
-    symbol_table.unpack(st)
-
-    ## Make a stack and a generation shelf
-    stack = deque()
-#    gen_shelf = dict()
-    gen_shelf = shelve.open('.build_tree_worker.%d'%(os.getpid()))
-
-    while 1:
-        ## Clean up
-        gc.collect()
-
-        ## Send info on readiness
-        comm.send(mpi_rank,dest=0,tag=1)
-
-        ## Grab a message
-        message = comm.recv(source=0,tag=2)
-
-        if message == 'EXPAND':
-            state = comm.recv(source=0,tag=3)
-            base_prob_dict = comm.recv(source=0,tag=4)
-            state = Node(load(state),symbol_table)
-            expand_state(state,base_prob_dict,gen_shelf)
-            del state
-            del base_prob_dict
-        elif message == 'COMBINE':
-            filename = comm.recv(source=0,tag=3)
-            root_shelf = shelve.open(filename)
-            add_shelf_shelf(root_shelf,gen_shelf)
-            root_shelf.close()
-#            del gen_shelf
-#            gen_shelf = dict()
-            gen_shelf.close()
-            comm.send("DONE",dest=0,tag=4)
-            for filename in glob.glob('.build_tree_worker.%d*'%(os.getpid())):
-                os.remove(filename)
-            gen_shelf = shelve.open('.build_tree_worker.%d'%(os.getpid()))
-        elif message == 'WAIT':
-            message = comm.recv(source=0,tag=3)
-        elif message == 'EXIT':
-            gen_shelf.close()
-            for filename in glob.glob('.build_tree_worker.%d*'%(os.getpid())):
-                os.remove(filename)
-            break
-
+f = open('Makefile','w')
+print >> f,'all:',
+for n in range(1,number_of_generations+1):
+    print >> f,'generation_%03d_summary'%(n),
+print >> f
+print >> f
+for n in range(1,number_of_generations+1):
+    print >> f,'generation_%03d_summary: generation_%03d_summary.c'%(n,n)
+    print >> f,'\tcc -o generation_%03d_summary generation_%03d_summary.c -lm'%(n,n)
+f.close()
