@@ -9,6 +9,7 @@ except:
 from sympy import simplify
 from sympy import Symbol
 from collections import deque
+from collections import defaultdict
 from string import join
 import os
 import sys
@@ -184,14 +185,12 @@ class SymbolTable:
             return join(temp,'+')
         return '0.0'
     def probability_dict_to_c_string(self,prob_dict):
-        temp = []
+        temp = ['_result = 0.0;']
         for prob,count in prob_dict.iteritems():
             prob = load(prob)
             if count > 0:
-                temp.append(self.probability_to_c_string(prob,count))
-        if len(temp) > 0:
-            return join(temp,'+\n')
-        return '0.0'
+                temp.append(join(['_result += ',self.probability_to_c_string(prob,count),';'],''))
+        return join(temp,'\n')
     def parse_state(self,input):
         temp = input.rstrip('\n').split(':')
         state = [0] * len(symbol_table.symbols)
@@ -267,14 +266,9 @@ class Node:
                 stack.append(self)
         else:
             try:
-                prob_dict = shelf[dump(self.state)]
-                try:
-                    prob_dict[dump(self.selected)] += 1
-                except:
-                    prob_dict[dump(self.selected)] = 1
+                shelf[dump(self.state)][dump(self.selected)] += 1
             except:
-                prob_dict = { dump(self.selected) : 1 }
-            shelf[dump(self.state)] = prob_dict
+                shelf[dump(self.state)][dump(self.selected)] = 1
         return None
 
 ## Pulls some initial states from a file and populate the shelf
@@ -418,14 +412,15 @@ def print_c_code(summary,size,symbol_table,filename):
                 prob_dict = summary[summary_index]
             except:
                 prob_dict = dict()
-            print >> out_f,'printf(\"%0.18G','\",%s);'%(symbol_table.probability_dict_to_c_string(prob_dict))
+            print >> out_f,symbol_table.probability_dict_to_c_string(prob_dict)
+            print >> out_f,'printf(\"%0.18G','\",_result);'
         print >> out_f,'printf(\"\\n\");'
     print >> out_f,'return 0; }'
     out_f.close()
     print "Code Generation Progress: %4.1f %% \r"%(100.0),
 
 def expand_state(state_node,base_prob_dict,gen_shelf):
-    state_shelf = dict()
+    state_shelf = defaultdict(dict)
     stack = deque()
     stack.append(state_node)
 
@@ -667,7 +662,7 @@ if mpi_rank == 0:
     print >> f
     for n in range(1,number_of_generations+1):
         print >> f,'generation_%03d_summary: generation_%03d_summary.c'%(n,n)
-        print >> f,'\tcc -O3 -o generation_%03d_summary generation_%03d_summary.c -lm'%(n,n)
+        print >> f,'\tcc -o generation_%03d_summary generation_%03d_summary.c -lm'%(n,n)
     f.close()
 
     if use_mpi:
