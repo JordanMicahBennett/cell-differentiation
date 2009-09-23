@@ -201,14 +201,12 @@ class SymbolTable:
             return join(temp,'+')
         return '0.0'
     def probability_dict_to_c_string(self,prob_dict):
-        temp = []
+        temp = ['_result = 0.0;']
         for prob,count in prob_dict.iteritems():
             prob = load(prob)
             if count > 0:
-                temp.append(self.probability_to_c_string(prob,count))
-        if len(temp) > 0:
-            return join(temp,'+\n')
-        return '0.0'
+                temp.append(join(['_result += ',self.probability_to_c_string(prob,count),';'],''))
+        return join(temp,'\n')
     def parse_state(self,input):
         temp = input.rstrip('\n').split(':')
         state = [0] * len(symbol_table.symbols)
@@ -430,7 +428,8 @@ def print_c_code(summary,size,symbol_table,filename):
                 prob_dict = summary[summary_index]
             except:
                 prob_dict = dict()
-            print >> out_f,'printf(\"%0.18G','\",%s);'%(symbol_table.probability_dict_to_c_string(prob_dict))
+            print >> out_f,symbol_table.probability_dict_to_c_string(prob_dict)
+            print >> out_f,'printf(\"%0.18G','\",_result);'
         print >> out_f,'printf(\"\\n\");'
     print >> out_f,'return 0; }'
     out_f.close()
