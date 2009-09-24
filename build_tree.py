@@ -417,13 +417,15 @@ def print_c_code(summary,size,symbol_table,filename):
     out_f.close()
     print "Code Generation Progress: %4.1f %% \r"%(100.0),
 
-def expand_state(state_node,base_prob_dict,gen_shelf):
+def expand_state(state_node,base_prob_dict,gen_shelf,states_shelf):
     state_shelf = defaultdict(dict)
     stack = deque()
     stack.append(state_node)
 
     while len(stack) > 0:
         stack.pop().expand(stack,state_shelf)
+
+    states_shelf[dump(state_node.state)] = state_shelf
 
     ## Filter results back to generation results by multiplication
     for new_state,prob_dict in state_shelf.iteritems():
@@ -497,6 +499,9 @@ if not os.path.isfile(init_file):
 ## Create last generation shelf
 last_gen = shelve.open('.generation_%03d.%d'%(0,os.getpid()))
 
+## Create state transition storage shelf
+states_shelf = shelve.open('.states.%d'%(os.getpid()))
+
 ## Read rules into symbol_table
 if not symbol_table.read_rules(rule_file):
     rootexit()
@@ -540,7 +545,7 @@ for n in range(1,number_of_generations+1):
         sys.stdout.flush()
 
         state = Node(load(state),symbol_table)
-        expand_state(state,base_prob_dict,gen_shelf)
+        expand_state(state,base_prob_dict,gen_shelf,states_shelf)
 
         gen_count += 1
 
@@ -598,6 +603,8 @@ print 'Total elapsed time:',(end_time - init_time)
 ## Finalize results
 last_gen.close()
 for filename in glob.glob('.generation_%03d.%d*'%(number_of_generations,os.getpid())):
+    os.remove(filename)
+for filename in glob.glob('.states.%d*'%(os.getpid())):
     os.remove(filename)
 
 f = open('Makefile','w')
