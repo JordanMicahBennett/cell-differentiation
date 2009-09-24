@@ -187,9 +187,9 @@ class SymbolTable:
         for x in range(len(prob)):
             if prob[x] > 0:
                 if prob[x] > 1:
-                    temp.append('pow(%s,%d.0)'%(self.rules_probabilities[x],prob[x]))
+                    temp.append('pow(rule_%d,%d.0)'%(x,prob[x]))
                 else:
-                    temp.append(self.rules_probabilities[x])
+                    temp.append('rule_%d'%(x))
         return join(temp,'*')
     def probability_dict_to_string(self,prob_dict):
         temp = []
@@ -201,11 +201,11 @@ class SymbolTable:
             return join(temp,'+')
         return '0.0'
     def probability_dict_to_c_string(self,prob_dict):
-        temp = ['_result = 0.0;']
+        temp = ['result = 0.0;']
         for prob,count in prob_dict.iteritems():
             prob = load(prob)
             if count > 0:
-                temp.append(join(['_result += ',self.probability_to_c_string(prob,count),';'],''))
+                temp.append(join(['result += ',self.probability_to_c_string(prob,count),';'],''))
         return join(temp,'\n')
     def parse_state(self,input):
         temp = input.rstrip('\n').split(':')
@@ -414,7 +414,9 @@ def print_c_code(summary,size,symbol_table,filename):
     print >> out_f,'return -1; }'
     for x in range(len(unique_symbols)):
         print >> out_f,'double %s = atof(argv[%d]);'%(unique_symbols[x],x+1)
-    print >> out_f,'double _result;'
+    for x in range(len(symbol_table.rules_probabilities)):
+        print >> out_f,'double rule_%d = %s;'%(x,symbol_table.rules_probabilities[x]);
+    print >> out_f,'double result;'
 
     for x in symbol_table.symbols:
         print >> out_f,'printf(\"%s \");'%(x)
@@ -429,7 +431,7 @@ def print_c_code(summary,size,symbol_table,filename):
             except:
                 prob_dict = dict()
             print >> out_f,symbol_table.probability_dict_to_c_string(prob_dict)
-            print >> out_f,'printf(\"%0.18G','\",_result);'
+            print >> out_f,'printf(\"%0.18G','\",result);'
         print >> out_f,'printf(\"\\n\");'
     print >> out_f,'return 0; }'
     out_f.close()
