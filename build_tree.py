@@ -248,16 +248,16 @@ class Node:
     def expand(self,stack,shelf,states_shelf):
         try:
             state_shelf = states_shelf[dump(self.expandable)]
-            print "Found Match:",self.expandable
+            print "Found Match:"
+            self.write(sys.stdout)
             for x in range(len(self.state)):
                 self.state[x] -= self.expandable[x]
             for state,prob_dict in state_shelf.iteritems():
-                state = load(state)
-                new_state = list(self.state)
+                new_state = list(load(state))
                 for x in range(len(new_state)):
-                    new_state[x] += state[x]
+                    new_state[x] += self.state[x]
                 for prob,count in prob_dict.iteritems():
-                    new_prob = list(prob)
+                    new_prob = list(load(prob))
                     for x in range(len(new_prob)):
                         new_prob[x] += self.selected[x]
                     try:
