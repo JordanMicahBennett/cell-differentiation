@@ -248,8 +248,6 @@ class Node:
     def expand(self,stack,shelf,states_shelf):
         try:
             state_shelf = states_shelf[dump(self.expandable)]
-            print "Found Match:"
-            self.write(sys.stdout)
             for x in range(len(self.state)):
                 self.state[x] -= self.expandable[x]
             for state,prob_dict in state_shelf.iteritems():
