@@ -441,7 +441,6 @@ def expand_state(state_node,base_prob_dict,gen_shelf,states_shelf):
     state = dump(state_node.state)
     try:
         state_shelf = states_shelf[state]
-        print "Found Duplicate:",state_node.state
     except:
         state_shelf = defaultdict(dict)
         stack = deque()
