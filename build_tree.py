@@ -22,7 +22,6 @@ def load(object):
 
 ## Root exit routine
 def rootexit():
-    comm.bcast(None,root=0)
     sys.exit(-1)
 
 def usage():
@@ -439,7 +438,6 @@ def expand_state(state_node,base_prob_dict,gen_shelf):
 
 symbol_table = SymbolTable()
 
-
 ## Calculate default epsilon - to machine precision
 epsilon = 1
 while epsilon / 2.0  + 1.0 > 1.0:
@@ -496,7 +494,7 @@ if not os.path.isfile(init_file):
 
 ## Minimal checking finished --- we are a go!
 
-## Create stack
+## Create last generation shelf
 last_gen = shelve.open('.generation_%03d.%d'%(0,os.getpid()))
 
 ## Read rules into symbol_table
