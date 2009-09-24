@@ -1,0 +1,6 @@
+#!/bin/bash
+
+rm .generation*
+rm .build*
+rm .states*
+rm .summary*
