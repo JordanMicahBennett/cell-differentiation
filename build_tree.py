@@ -221,13 +221,16 @@ class Node:
     expandable = None
     selected = None
     symbol_table = None
-    def __init__(self,state,symbol_table):
+    def __init__(self,state,symbol_table,expand):
         self.state = list(state)
-        self.expandable = list(state)
+        if expand:
+            self.expandable = list(state)
+        else:
+            self.expandable = [0] * len(state)
         self.selected = [0] * len(symbol_table.rules)
         self.symbol_table = symbol_table
     def copy(self):
-        new_node = Node(self.state,self.symbol_table)
+        new_node = Node(self.state,self.symbol_table,True)
         new_node.expandable = list(self.expandable)
         new_node.selected = list(self.selected)
         return new_node
@@ -242,31 +245,50 @@ class Node:
     def to_string(self):
         return (self.symbol_table.state_to_string(self.state) + ' : ' + 
                 self.symbol_table.probability_to_string(self.selected))
-    def expand(self,stack,shelf):
-        expand = -1
-        for x in range(len(self.expandable)):
-            if self.expandable[x] > 0:
-                expand = x
-                break
-        if expand >= 0:
-            self.expandable[expand] -= 1
-            self.state[expand] -= 1
-            stack_size = len(stack)
-            for x in self.symbol_table.rules_inv[expand]: 
-                n = self.copy()
-                for y in range(len(n.state)):
-                    n.state[y] += self.symbol_table.rules[x][y]
-                n.selected[x] += 1
-                stack.append(n)
-            if stack_size == len(stack):
-                self.state[expand] += 1
-                self.expandable[expand] = 0
-                stack.append(self)
-        else:
-            try:
-                shelf[dump(self.state)][dump(self.selected)] += 1
-            except:
-                shelf[dump(self.state)][dump(self.selected)] = 1
+    def expand(self,stack,shelf,states_shelf):
+        try:
+            state_shelf = states_shelf[dump(self.expandable)]
+            print "Found Match:",self.expandable
+            for x in range(len(self.state)):
+                self.state[x] -= self.expandable[x]
+            for state,prob_dict in state_shelf.iteritems():
+                state = load(state)
+                new_state = list(self.state)
+                for x in range(len(new_state)):
+                    new_state[x] += state[x]
+                for prob,count in prob_dict.iteritems():
+                    new_prob = list(prob)
+                    for x in range(len(new_prob)):
+                        new_prob[x] += self.selected[x]
+                    try:
+                        shelf[dump(new_state)][dump(new_prob)] += count
+                    except:
+                        shelf[dump(new_state)][dump(new_prob)] = count                    
+        except:
+            expand = -1
+            for x in range(len(self.expandable)):
+                if self.expandable[x] > 0:
+                    expand = x
+                    break
+            if expand >= 0:
+                self.expandable[expand] -= 1
+                self.state[expand] -= 1
+                stack_size = len(stack)
+                for x in self.symbol_table.rules_inv[expand]: 
+                    n = self.copy()
+                    for y in range(len(n.state)):
+                        n.state[y] += self.symbol_table.rules[x][y]
+                    n.selected[x] += 1
+                    stack.append(n)
+                if stack_size == len(stack):
+                    self.state[expand] += 1
+                    self.expandable[expand] = 0
+                    stack.append(self)
+            else:
+                try:
+                    shelf[dump(self.state)][dump(self.selected)] += 1
+                except:
+                    shelf[dump(self.state)][dump(self.selected)] = 1
         return None
 
 ## Pulls some initial states from a file and populate the shelf
@@ -418,14 +440,19 @@ def print_c_code(summary,size,symbol_table,filename):
     print "Code Generation Progress: %4.1f %% \r"%(100.0),
 
 def expand_state(state_node,base_prob_dict,gen_shelf,states_shelf):
-    state_shelf = defaultdict(dict)
-    stack = deque()
-    stack.append(state_node)
+    state = dump(state_node.state)
+    try:
+        state_shelf = states_shelf[state]
+        print "Found Duplicate:",state_node.state
+    except:
+        state_shelf = defaultdict(dict)
+        stack = deque()
+        stack.append(state_node)
 
-    while len(stack) > 0:
-        stack.pop().expand(stack,state_shelf)
+        while len(stack) > 0:
+            stack.pop().expand(stack,state_shelf,states_shelf)
 
-    states_shelf[dump(state_node.state)] = state_shelf
+        states_shelf[state] = state_shelf
 
     ## Filter results back to generation results by multiplication
     for new_state,prob_dict in state_shelf.iteritems():
@@ -544,7 +571,7 @@ for n in range(1,number_of_generations+1):
         print 'Expansion Progress: %4.1f %% \r'%(gen_count * (100.0 / gen_size)),
         sys.stdout.flush()
 
-        state = Node(load(state),symbol_table)
+        state = Node(load(state),symbol_table,True)
         expand_state(state,base_prob_dict,gen_shelf,states_shelf)
 
         gen_count += 1
