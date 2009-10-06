@@ -293,68 +293,6 @@ class Node:
                     shelf[dump(self.state)][dump(self.selected)] = 1
         return None
     def new_expand(self,stack,current_dict,leaf_dict,expand_shelf):
-        if not self.visited:
-            ## Brand New!
-            ## If you are a state that's new, you might be in the list already.
-            if expand_shelf.has_key(dump(self.expandable)):
-                ## If you are, then mark yourself as visited and push yourself back onto the
-                ## stack.
-                self.visited = True
-                stack.append(self)
-            else:
-                ## If not, then you could be a leaf or you need expanding.
-                expand = -1
-                for x in range(len(self.expandable)):
-                    if self.expandable[x] > 0:
-                        expand = x
-                        break
-                if expand >= 0:
-                    ## Not a leaf, so you need expanding.
-                    ## However, mark yourself as visited first and push yourself back onto
-                    ## the stack.
-                    self.visited = True
-                    stack.append(self)
-                    self.expandable[expand] -= 1
-                    self.state[expand] -= 1
-                    stack_size = len(stack)
-                    for x in self.symbol_table.rules_inv[expand]: 
-                        n = self.copy()
-                        for y in range(len(n.state)):
-                            n.state[y] += self.symbol_table.rules[x][y]
-                        n.selected[x] += 1
-                        n.visited = False
-                        stack.append(n)
-                    if stack_size == len(stack):
-                        self.state[expand] += 1
-                        self.expandable[expand] = 0
-                        stack.append(self)
-                else:
-                    ## You are a leaf! You need to be put in the leaf dictionary.
-                    leaf_dict[dump(self.state)][dump(self.selected)] += 1
-        else:
-            ## Been visited already!
-            if expand_shelf.has_key(dump(self.expandable)):
-                ## You're in the dictionary and you have been visited, so
-                ## you're ready for integration at this point.
-                state_shelf = expand_shelf[dump(self.expandable)]
-                for x in range(len(self.state)):
-                    self.state[x] -= self.expandable[x]
-                for state,prob_dict in state_shelf.iteritems():
-                    new_state = list(load(state))
-                    for x in range(len(new_state)):
-                        new_state[x] += self.state[x]
-                    for prob,count in prob_dict.iteritems():
-                        new_prob = list(load(prob))
-                        for x in range(len(new_prob)):
-                            new_prob[x] += self.selected[x]
-                        current_dict[dump(new_state)][dump(new_prob)] += count
-            else:
-                ## You've been visited, but your subtree hasn't been created yet.
-                ## We need to build your subtree. Your children should already be ready to go.
-                ## Any leaves are currently yours. You also might have children that are now
-                ## subtrees. We need to subtract out any differences in the "selected" parts
-                ## of your children though. They don't apply for you down.
-                
         return None
 ## Pulls some initial states from a file and populate the shelf
 def populate_shelf(shelf,filename,symbol_table):
