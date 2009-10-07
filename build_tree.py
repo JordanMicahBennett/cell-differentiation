@@ -45,7 +45,6 @@ class SymbolTable:
     rules_inv = []
     rules_probabilities = []
     use_numeric = True
-    generic_symbol_number = 1
     def pack(self):
         data = []
         data.append(self.symbols)
@@ -54,7 +53,6 @@ class SymbolTable:
         data.append(self.rules_inv)
         data.append(self.rules_probabilities)
         data.append(self.use_numeric)
-        data.append(self.generic_symbol_number)
         return data
     def unpack(self,data):
         self.symbols = data[0]
@@ -63,7 +61,6 @@ class SymbolTable:
         self.rules_inv = data[3]
         self.rules_probabilities = data[4]
         self.use_numeric = data[5]
-        self.generic_symbol_number = data[6]
         return self
     def write(self,f):
         print >> f,'Object:',self
@@ -268,12 +265,13 @@ class Node:
                     stack_size = len(stack)
                     for selected in self.symbol_table.rules_inv[expand]: 
                         n = base.copy()
-                        for y in range(len(n.state)):
-                            n.state[y] += self.symbol_table.rules[selected][y]
+                        for x in range(len(n.state)):
+                            n.state[x] += self.symbol_table.rules[selected][x]
                         n.selected[selected] += 1
                         stack.append(n)
                     if stack_size == len(stack):
                         self.expandable[expand] = 0
+                        self.visited = False
                 else:
                     ## You are a leaf. You need to be in the leaves list.
                     leaf_dict[dump(self.state)][dump(self.selected)] += 1
@@ -466,28 +464,30 @@ def print_c_code(summary,size,symbol_table,filename):
     out_f.close()
     print "Code Generation Progress: %4.1f %% \r"%(100.0),
 
-def expand_state(state_node,base_prob_dict,gen_shelf,states_shelf):
-    state = dump(state_node.state)
-    try:
-        state_shelf = states_shelf[state]
-    except:
-        state_shelf = defaultdict(zerodict)
+def expand_state(state,base_prob_dict,gen_shelf,expand_shelf,symbol_table):
+    if (expand_shelf.has_key(dump(state))):
+        subtree = expand_shelf[state]
+    else:
         stack = deque()
-        stack.append(state_node)
+        leaf_dict = defaultdict(zerodict)
 
+        stack.append(Node(state,symbol_table))
         while len(stack) > 0:
-            stack.pop().expand(stack,state_shelf,states_shelf)
+            stack.pop().expand(stack,leaf_dict,expand_shelf)
 
-        states_shelf[state] = state_shelf
+        subtree = expand_shelf[state]
 
     ## Filter results back to generation results by multiplication
-    for new_state,prob_dict in state_shelf.iteritems():
-        try:
+    for state_offset,prob_dict in subtree.iteritems():
+        if (gen_shelf.has_hey(state_offset)):
             result = gen_shelf[new_state]
-        except:
+        else:
             result = dict()
+        new_state = load(state_offset)
+        for x in len(range(state_offset)):
+            new_state[x] += state[x]
         multiply(base_prob_dict,prob_dict,result)
-        gen_shelf[new_state] = result
+        gen_shelf[dump(new_state)] = result
 
 ## Functions and data structures defined... let us begin.
 
@@ -597,8 +597,7 @@ for n in range(1,number_of_generations+1):
         print 'Expansion Progress: %4.1f %% \r'%(gen_count * (100.0 / gen_size)),
         sys.stdout.flush()
 
-        state = Node(load(state),symbol_table,True)
-        expand_state(state,base_prob_dict,gen_shelf,states_shelf)
+        expand_state(load(state),base_prob_dict,gen_shelf,expand_shelf,symbol_table)
 
         gen_count += 1
 
@@ -655,9 +654,10 @@ print 'Total elapsed time:',(end_time - init_time)
 
 ## Finalize results
 last_gen.close()
+expand_shelf.close()
 for filename in glob.glob('.generation_%03d.%d*'%(number_of_generations,os.getpid())):
     os.remove(filename)
-for filename in glob.glob('.states.%d*'%(os.getpid())):
+for filename in glob.glob('.expand.%d*'%(os.getpid())):
     os.remove(filename)
 
 f = open('Makefile','w')
