@@ -62,7 +62,7 @@ class SymbolTable:
         self.rules_probabilities = data[4]
         self.use_numeric = data[5]
         return self
-    def write(self,f):
+    def write(self,f=sys.stdout):
         print >> f,'Object:',self
         print >> f,'Symbols:',self.symbols
         print >> f,'Symbols Inv:',self.symbols_inv
@@ -235,21 +235,16 @@ class Node:
         new_node.selected = list(self.selected)
         new_node.visited = self.visited
         return new_node
-    def write(self,f):
+    def write(self,f=sys.stdout):
         print >> f,'Object:',self
         print >> f,'State:',self.state
         print >> f,'Expandable:',self.expandable
         print >> f,'Selected:',self.selected
         print >> f,'Visited:',self.visited
         print >> f,'Symbol Table:',self.symbol_table
-        print >> f,'As String:',self.to_string()
-        print >> f
-    def to_string(self):
-        return (self.symbol_table.state_to_string(self.state) + ' : ' + 
-                self.symbol_table.probability_to_string(self.selected))
     def expand(self,stack,leaf_dict,expand_shelf):
         if not self.visited:
-            if not expand_shelf.has_key(dumps(self.expandable)):
+            if not expand_shelf.has_key(dump(self.expandable)):
                 expand = -1
                 for x in range(len(self.expandable)):
                     if self.expandable[x] > 0:
@@ -270,8 +265,9 @@ class Node:
                         n.selected[selected] += 1
                         stack.append(n)
                     if stack_size == len(stack):
-                        self.expandable[expand] = 0
-                        self.visited = False
+                        base.expandable[expand] = 0
+                        base.state[expand] += 1
+                        stack.append(base)
                 else:
                     ## You are a leaf. You need to be in the leaves list.
                     leaf_dict[dump(self.state)][dump(self.selected)] += 1
@@ -298,6 +294,7 @@ class Node:
                         break
                 expandable = list(self.expandable)
                 expandable[expand] -= 1
+                self.state[expand] -= 1
                 subtree_dict = load(expand_shelf[dump(expandable)])
                 for selected in self.symbol_table.rules_inv[expand]:
                     state_update = list(self.state)
@@ -307,7 +304,7 @@ class Node:
                         new_state = load(state)
                         for x in range(len(new_state)):
                             new_state[x] += state_update[x]
-                        for prob,count in subprob_dict.iteritems():
+                        for prob,count in prob_dict.iteritems():
                             new_prob = load(prob)
                             new_prob[selected] += 1
                             new_dict[dump(new_state)][dump(new_prob)] += count
@@ -465,9 +462,7 @@ def print_c_code(summary,size,symbol_table,filename):
     print "Code Generation Progress: %4.1f %% \r"%(100.0),
 
 def expand_state(state,base_prob_dict,gen_shelf,expand_shelf,symbol_table):
-    if (expand_shelf.has_key(dump(state))):
-        subtree = expand_shelf[state]
-    else:
+    if not expand_shelf.has_key(dump(state)):
         stack = deque()
         leaf_dict = defaultdict(zerodict)
 
@@ -475,17 +470,27 @@ def expand_state(state,base_prob_dict,gen_shelf,expand_shelf,symbol_table):
         while len(stack) > 0:
             stack.pop().expand(stack,leaf_dict,expand_shelf)
 
-        subtree = expand_shelf[state]
+#     print
+#     for key,value in expand_shelf.iteritems():
+#         value = load(value)
+#         print 'Base:',load(key)
+#         for subkey,subvalue in value.iteritems():
+#             print 'Diff State:',load(subkey)
+#             for prob,count in subvalue.iteritems():
+#                 print load(prob),':',count
+#     print
+
+    subtree = load(expand_shelf[dump(state)])
 
     ## Filter results back to generation results by multiplication
     for state_offset,prob_dict in subtree.iteritems():
-        if (gen_shelf.has_hey(state_offset)):
-            result = gen_shelf[new_state]
+        new_state = load(state_offset)
+        for x in range(len(new_state)):
+            new_state[x] += state[x]
+        if gen_shelf.has_key(dump(new_state)):
+            result = gen_shelf[dump(new_state)]
         else:
             result = dict()
-        new_state = load(state_offset)
-        for x in len(range(state_offset)):
-            new_state[x] += state[x]
         multiply(base_prob_dict,prob_dict,result)
         gen_shelf[dump(new_state)] = result
 

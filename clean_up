@@ -2,5 +2,5 @@
 
 rm .generation*
 rm .build*
-rm .states*
+rm .expand*
 rm .summary*
