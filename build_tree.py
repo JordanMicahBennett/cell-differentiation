@@ -245,12 +245,9 @@ class Node:
     def expand(self,stack,leaf_dict,expand_shelf):
         if not self.visited:
             if not expand_shelf.has_key(dump(self.expandable)):
-                expand = -1
-                for x in range(len(self.expandable)):
-                    if self.expandable[x] > 0:
-                        expand = x
-                        break
-                if expand >= 0:
+                expand_max = max(self.expandable)
+                expand = self.expandable.index(expand_max)
+                if expand_max > 0:
                     ## Put yourself back on the stack, but now labeled as visited
                     base = self.copy()
                     self.visited = True
@@ -265,15 +262,15 @@ class Node:
                         n.selected[selected] += 1
                         stack.append(n)
                     if stack_size == len(stack):
-                        base.expandable[expand] = 0
-                        base.state[expand] += 1
-                        stack.append(base)
+                        self.state[expand] += self.expandable[expand]
+                        self.expandable[expand] = 0
+                        self.visited = False
                 else:
                     ## You are a leaf. You need to be in the leaves list.
                     leaf_dict[dump(self.state)][dump(self.selected)] += 1
         else:
+            new_dict = defaultdict(zerodict)
             if len(leaf_dict) > 0:
-                new_dict = defaultdict(zerodict)
                 for state,prob_dict in leaf_dict.iteritems():
                     new_state = load(state)
                     for x in range(len(new_state)):
@@ -284,31 +281,25 @@ class Node:
                             new_prob[x] -= self.selected[x]
                         new_dict[dump(new_state)][dump(new_prob)] += count
                 leaf_dict = defaultdict(zerodict)
-                expand_shelf[dump(self.expandable)] = dump(new_dict)
-            else:
-                new_dict = defaultdict(zerodict)
-                expand = -1
-                for x in range(len(self.expandable)):
-                    if self.expandable[x] > 0:
-                        expand = x
-                        break
+            expand_max = max(self.expandable)
+            expand = self.expandable.index(expand_max)
+            if expand_max > 0:
                 expandable = list(self.expandable)
                 expandable[expand] -= 1
-                self.state[expand] -= 1
-                subtree_dict = load(expand_shelf[dump(expandable)])
-                for selected in self.symbol_table.rules_inv[expand]:
-                    state_update = list(self.state)
-                    for x in range(len(state_update)):
-                        state_update[x] += self.symbol_table.rules[selected][x]
-                    for state,prob_dict in subtree_dict.iteritems():
-                        new_state = load(state)
-                        for x in range(len(new_state)):
-                            new_state[x] += state_update[x]
-                        for prob,count in prob_dict.iteritems():
-                            new_prob = load(prob)
-                            new_prob[selected] += 1
-                            new_dict[dump(new_state)][dump(new_prob)] += count
-                expand_shelf[dump(self.expandable)] = dump(new_dict)
+                if expand_shelf.has_key(dump(expandable)):
+                    subtree_dict = load(expand_shelf[dump(expandable)])
+                    for selected in self.symbol_table.rules_inv[expand]:
+                        state_update = list(self.symbol_table.rules[selected])
+                        state_update[expand] -= 1
+                        for state,prob_dict in subtree_dict.iteritems():
+                            new_state = load(state)
+                            for x in range(len(new_state)):
+                                new_state[x] += state_update[x]
+                            for prob,count in prob_dict.iteritems():
+                                new_prob = load(prob)
+                                new_prob[selected] += 1
+                                new_dict[dump(new_state)][dump(new_prob)] += count
+            expand_shelf[dump(self.expandable)] = dump(new_dict)                    
         return None
 
 ## Pulls some initial states from a file and populate the shelf
@@ -327,10 +318,11 @@ def multiply(base_prob_dict,prob_dict,result_dict):
         new_prob = load(new_prob)
         for base_prob,base_count in base_prob_dict.iteritems():
             base_prob = load(base_prob)
-            try:
-                result_dict[dump(add_prob_prob(base_prob,new_prob))] += base_count * new_count
-            except:
-                result_dict[dump(add_prob_prob(base_prob,new_prob))] = base_count * new_count
+            temp = dump(add_prob_prob(base_prob,new_prob))
+            if result_dict.has_key(temp):
+                result_dict[temp] += base_count * new_count
+            else:
+                result_dict[temp] = base_count * new_count
 
 def add_prob_prob(dest_prob,src_prob):
     result = list(dest_prob)
@@ -344,9 +336,9 @@ def add_shelf_shelf(dest_shelf,src_shelf):
         add_shelf_prob_dict(dest_shelf,state,src_prob_dict)
 
 def add_shelf_prob_dict(dest_shelf,state,src_prob_dict):
-    try:
+    if dest_shelf.has_key(state):
         dest_prob_dict = dest_shelf[state]
-    except:
+    else:
         dest_prob_dict = dict()
     add_prob_dict_prob_dict(dest_prob_dict,src_prob_dict)
     dest_shelf[state] = dest_prob_dict
@@ -356,9 +348,9 @@ def add_prob_dict_prob_dict(dest_prob_dict,src_prob_dict):
         add_prob_dict_prob(dest_prob_dict,src_prob,src_count)
 
 def add_prob_dict_prob(dest_prob_dict,src_prob,src_count):
-    try:
+    if dest_prob_dict.has_key(src_prob):
         dest_count = dest_prob_dict[src_prob]
-    except:
+    else:
         dest_count = 0
     dest_prob_dict[src_prob] = dest_count + src_count
 
@@ -407,9 +399,9 @@ def print_summary(summary,size,symbol_table,filename):
         print "Printing Progress: %4.1f %% \r"%(count * (100.0 / (size + 1))),
         for symbol in symbol_table.symbols:
             summary_index = dump((symbol,count))
-            try:
+            if summary.has_key(summary_index):
                 prob_dict = summary[summary_index]
-            except:
+            else:
                 prob_dict = dict()
             print >> out_f,"\"%s\""%(symbol_table.probability_dict_to_string(prob_dict)),
         print >> out_f
@@ -470,18 +462,25 @@ def expand_state(state,base_prob_dict,gen_shelf,expand_shelf,symbol_table):
         while len(stack) > 0:
             stack.pop().expand(stack,leaf_dict,expand_shelf)
 
+    if not expand_shelf.has_key(dump(state)):
+        subtree = defaultdict(zerodict)
+        subtree[dump([0] * len(symbol_table.symbols))][dump([0] * len(symbol_table.rules))] = 1
+    else:
+        subtree = load(expand_shelf[dump(state)])
+
+#     print
 #     print
 #     for key,value in expand_shelf.iteritems():
 #         value = load(value)
+#         print
 #         print 'Base:',load(key)
+#         print
 #         for subkey,subvalue in value.iteritems():
 #             print 'Diff State:',load(subkey)
 #             for prob,count in subvalue.iteritems():
 #                 print load(prob),':',count
 #     print
-
-    subtree = load(expand_shelf[dump(state)])
-
+    
     ## Filter results back to generation results by multiplication
     for state_offset,prob_dict in subtree.iteritems():
         new_state = load(state_offset)
