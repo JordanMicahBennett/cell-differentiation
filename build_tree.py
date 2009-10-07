@@ -224,76 +224,98 @@ class Node:
     state = None
     expandable = None
     selected = None
+    visited = None
     symbol_table = None
-    def __init__(self,state,symbol_table,expand):
-        self.state = list(state)
-        if expand:
-            self.expandable = list(state)
-        else:
-            self.expandable = [0] * len(state)
+    def __init__(self,state,symbol_table):
+        self.state = [0] * len(state)
+        self.expandable = list(state)
         self.selected = [0] * len(symbol_table.rules)
+        self.visited = False
         self.symbol_table = symbol_table
     def copy(self):
-        new_node = Node(self.state,self.symbol_table,True)
-        new_node.expandable = list(self.expandable)
+        new_node = Node(self.expandable,self.symbol_table)
+        new_node.state = list(self.state)
         new_node.selected = list(self.selected)
+        new_node.visited = self.visited
         return new_node
     def write(self,f):
         print >> f,'Object:',self
         print >> f,'State:',self.state
         print >> f,'Expandable:',self.expandable
         print >> f,'Selected:',self.selected
+        print >> f,'Visited:',self.visited
         print >> f,'Symbol Table:',self.symbol_table
         print >> f,'As String:',self.to_string()
         print >> f
     def to_string(self):
         return (self.symbol_table.state_to_string(self.state) + ' : ' + 
                 self.symbol_table.probability_to_string(self.selected))
-    def expand(self,stack,shelf,states_shelf):
-        try:
-            state_shelf = states_shelf[dump(self.expandable)]
-            for x in range(len(self.state)):
-                self.state[x] -= self.expandable[x]
-            for state,prob_dict in state_shelf.iteritems():
-                new_state = list(load(state))
-                for x in range(len(new_state)):
-                    new_state[x] += self.state[x]
-                for prob,count in prob_dict.iteritems():
-                    new_prob = list(load(prob))
-                    for x in range(len(new_prob)):
-                        new_prob[x] += self.selected[x]
-                    try:
-                        shelf[dump(new_state)][dump(new_prob)] += count
-                    except:
-                        shelf[dump(new_state)][dump(new_prob)] = count                    
-        except:
-            expand = -1
-            for x in range(len(self.expandable)):
-                if self.expandable[x] > 0:
-                    expand = x
-                    break
-            if expand >= 0:
-                self.expandable[expand] -= 1
-                self.state[expand] -= 1
-                stack_size = len(stack)
-                for x in self.symbol_table.rules_inv[expand]: 
-                    n = self.copy()
-                    for y in range(len(n.state)):
-                        n.state[y] += self.symbol_table.rules[x][y]
-                    n.selected[x] += 1
-                    stack.append(n)
-                if stack_size == len(stack):
-                    self.state[expand] += 1
-                    self.expandable[expand] = 0
+    def expand(self,stack,leaf_dict,expand_shelf):
+        if not self.visited:
+            if not expand_shelf.has_key(dumps(self.expandable)):
+                expand = -1
+                for x in range(len(self.expandable)):
+                    if self.expandable[x] > 0:
+                        expand = x
+                        break
+                if expand >= 0:
+                    ## Put yourself back on the stack, but now labeled as visited
+                    base = self.copy()
+                    self.visited = True
                     stack.append(self)
+                    base.expandable[expand] -= 1
+                    base.state[expand] -= 1
+                    stack_size = len(stack)
+                    for selected in self.symbol_table.rules_inv[expand]: 
+                        n = base.copy()
+                        for y in range(len(n.state)):
+                            n.state[y] += self.symbol_table.rules[selected][y]
+                        n.selected[selected] += 1
+                        stack.append(n)
+                    if stack_size == len(stack):
+                        self.expandable[expand] = 0
+                else:
+                    ## You are a leaf. You need to be in the leaves list.
+                    leaf_dict[dump(self.state)][dump(self.selected)] += 1
+        else:
+            if len(leaf_dict) > 0:
+                new_dict = defaultdict(zerodict)
+                for state,prob_dict in leaf_dict.iteritems():
+                    new_state = load(state)
+                    for x in range(len(new_state)):
+                        new_state[x] -= self.state[x]
+                    for prob,count in prob_dict.iteritems():
+                        new_prob = load(prob)
+                        for x in range(len(new_prob)):
+                            new_prob[x] -= self.selected[x]
+                        new_dict[dump(new_state)][dump(new_prob)] += count
+                leaf_dict = defaultdict(zerodict)
+                expand_shelf[dump(self.expandable)] = dump(new_dict)
             else:
-                try:
-                    shelf[dump(self.state)][dump(self.selected)] += 1
-                except:
-                    shelf[dump(self.state)][dump(self.selected)] = 1
+                new_dict = defaultdict(zerodict)
+                expand = -1
+                for x in range(len(self.expandable)):
+                    if self.expandable[x] > 0:
+                        expand = x
+                        break
+                expandable = list(self.expandable)
+                expandable[expand] -= 1
+                subtree_dict = load(expand_shelf[dump(expandable)])
+                for selected in self.symbol_table.rules_inv[expand]:
+                    state_update = list(self.state)
+                    for x in range(len(state_update)):
+                        state_update[x] += self.symbol_table.rules[selected][x]
+                    for state,prob_dict in subtree_dict.iteritems():
+                        new_state = load(state)
+                        for x in range(len(new_state)):
+                            new_state[x] += state_update[x]
+                        for prob,count in subprob_dict.iteritems():
+                            new_prob = load(prob)
+                            new_prob[selected] += 1
+                            new_dict[dump(new_state)][dump(new_prob)] += count
+                expand_shelf[dump(self.expandable)] = dump(new_dict)
         return None
-    def new_expand(self,stack,current_dict,leaf_dict,expand_shelf):
-        return None
+
 ## Pulls some initial states from a file and populate the shelf
 def populate_shelf(shelf,filename,symbol_table):
     f = open(filename,'r')
@@ -531,7 +553,7 @@ if not os.path.isfile(init_file):
 last_gen = shelve.open('.generation_%03d.%d'%(0,os.getpid()))
 
 ## Create state transition storage shelf
-states_shelf = shelve.open('.states.%d'%(os.getpid()))
+expand_shelf = shelve.open('.expand.%d'%(os.getpid()))
 
 ## Read rules into symbol_table
 if not symbol_table.read_rules(rule_file):
