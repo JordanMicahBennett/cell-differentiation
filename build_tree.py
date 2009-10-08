@@ -245,6 +245,8 @@ class Node:
     def expand(self,stack,leaf_dict,expand_shelf):
         if not self.visited:
             if not expand_shelf.has_key(dump(self.expandable)):
+                print 'Expanding:'
+                self.write()
                 expand_max = max(self.expandable)
                 expand = self.expandable.index(expand_max)
                 if expand_max > 0:
@@ -254,21 +256,22 @@ class Node:
                     stack.append(self)
                     base.expandable[expand] -= 1
                     base.state[expand] -= 1
-                    stack_size = len(stack)
                     for selected in self.symbol_table.rules_inv[expand]: 
                         n = base.copy()
                         for x in range(len(n.state)):
                             n.state[x] += self.symbol_table.rules[selected][x]
                         n.selected[selected] += 1
                         stack.append(n)
-                    if stack_size == len(stack):
-                        self.state[expand] += self.expandable[expand]
-                        self.expandable[expand] = 0
-                        self.visited = False
                 else:
                     ## You are a leaf. You need to be in the leaf dictionary.
                     leaf_dict[dump(self.state)][dump(self.selected)] += 1
+                    print 'Added leaf:',self.state,self.selected,'(',leaf_dict[dump(self.state)][dump(self.selected)],self.expandable,')'
+            else:
+                print 'Skipping:'
+                self.write()
         else:
+            print 'Working on:'
+            self.write()
             new_dict = defaultdict(zerodict)
             expand_max = max(self.expandable)
             expand = self.expandable.index(expand_max)
@@ -276,6 +279,7 @@ class Node:
                 expandable = list(self.expandable)
                 expandable[expand] -= 1
                 if expand_shelf.has_key(dump(expandable)):
+                    print 'Merged new subtree'
                     subtree_dict = load(expand_shelf[dump(expandable)])
                     for selected in self.symbol_table.rules_inv[expand]:
                         state_update = list(self.symbol_table.rules[selected])
@@ -289,6 +293,7 @@ class Node:
                                 new_prob[selected] += 1
                                 new_dict[dump(new_state)][dump(new_prob)] += count
                 else:
+                    print 'Created from leaves'
                     for state,prob_dict in leaf_dict.iteritems():
                         new_state = load(state)
                         for x in range(len(new_state)):
@@ -299,6 +304,14 @@ class Node:
                                 new_prob[x] -= self.selected[x]
                             new_dict[dump(new_state)][dump(new_prob)] += count
                     leaf_dict = defaultdict(zerodict)
+            print 'Results:'
+            for state,prob_dict in new_dict.iteritems():
+                state = load(state)
+                print 'Base:',state
+                for prob,count in prob_dict.iteritems():
+                    prob = load(prob)
+                    print prob,count
+            print
             expand_shelf[dump(self.expandable)] = dump(new_dict)                    
         return None
 
@@ -454,33 +467,36 @@ def print_c_code(summary,size,symbol_table,filename):
     print "Code Generation Progress: %4.1f %% \r"%(100.0),
 
 def expand_state(state,base_prob_dict,gen_shelf,expand_shelf,symbol_table):
-    if not expand_shelf.has_key(dump(state)):
+    print 'Starting with state:',state
+    state_node = Node(state,symbol_table)
+    for x in range(len(symbol_table.symbols)):
+        if len(symbol_table.rules_inv[x]) == 0:
+            state_node.state[x] += state_node.expandable[x]
+            state_node.expandable[x] = 0
+
+    if not expand_shelf.has_key(dump(state_node.expandable)):
         stack = deque()
         leaf_dict = defaultdict(zerodict)
 
-        stack.append(Node(state,symbol_table))
+        stack.append(state_node)
         while len(stack) > 0:
             stack.pop().expand(stack,leaf_dict,expand_shelf)
 
-    if not expand_shelf.has_key(dump(state)):
+    if not expand_shelf.has_key(dump(state_node.expandable)):
         subtree = defaultdict(zerodict)
-        subtree[dump([0] * len(symbol_table.symbols))][dump([0] * len(symbol_table.rules))] = 1
+        for new_state,prob_dict in leaf_dict.iteritems():
+            new_state = load(new_state)
+            for x in range(len(new_state)):
+                new_state[x] -= state[x]
+            subtree[dump(new_state)] = prob_dict        
+        print 'Cleaned out leaves at end of expansion.'
+        print
     else:
-        subtree = load(expand_shelf[dump(state)])
-
-#     print
-#     print
-#     for key,value in expand_shelf.iteritems():
-#         value = load(value)
-#         print
-#         print 'Base:',load(key)
-#         print
-#         for subkey,subvalue in value.iteritems():
-#             print 'Diff State:',load(subkey)
-#             for prob,count in subvalue.iteritems():
-#                 print load(prob),':',count
-#     print
+        subtree = load(expand_shelf[dump(state_node.expandable)])
     
+    print 'Finished with state:',state
+    print
+
     ## Filter results back to generation results by multiplication
     for state_offset,prob_dict in subtree.iteritems():
         new_state = load(state_offset)
@@ -598,7 +614,7 @@ for n in range(1,number_of_generations+1):
 
         gc.collect()
 
-        print 'Expansion Progress: %4.1f %% \r'%(gen_count * (100.0 / gen_size)),
+#        print 'Expansion Progress: %4.1f %% \r'%(gen_count * (100.0 / gen_size)),
         sys.stdout.flush()
 
         expand_state(load(state),base_prob_dict,gen_shelf,expand_shelf,symbol_table)
