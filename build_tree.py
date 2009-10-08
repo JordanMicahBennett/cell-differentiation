@@ -266,21 +266,10 @@ class Node:
                         self.expandable[expand] = 0
                         self.visited = False
                 else:
-                    ## You are a leaf. You need to be in the leaves list.
+                    ## You are a leaf. You need to be in the leaf dictionary.
                     leaf_dict[dump(self.state)][dump(self.selected)] += 1
         else:
             new_dict = defaultdict(zerodict)
-            if len(leaf_dict) > 0:
-                for state,prob_dict in leaf_dict.iteritems():
-                    new_state = load(state)
-                    for x in range(len(new_state)):
-                        new_state[x] -= self.state[x]
-                    for prob,count in prob_dict.iteritems():
-                        new_prob = load(prob)
-                        for x in range(len(new_prob)):
-                            new_prob[x] -= self.selected[x]
-                        new_dict[dump(new_state)][dump(new_prob)] += count
-                leaf_dict = defaultdict(zerodict)
             expand_max = max(self.expandable)
             expand = self.expandable.index(expand_max)
             if expand_max > 0:
@@ -299,6 +288,17 @@ class Node:
                                 new_prob = load(prob)
                                 new_prob[selected] += 1
                                 new_dict[dump(new_state)][dump(new_prob)] += count
+                else:
+                    for state,prob_dict in leaf_dict.iteritems():
+                        new_state = load(state)
+                        for x in range(len(new_state)):
+                            new_state[x] -= self.state[x]
+                        for prob,count in prob_dict.iteritems():
+                            new_prob = load(prob)
+                            for x in range(len(new_prob)):
+                                new_prob[x] -= self.selected[x]
+                            new_dict[dump(new_state)][dump(new_prob)] += count
+                    leaf_dict = defaultdict(zerodict)
             expand_shelf[dump(self.expandable)] = dump(new_dict)                    
         return None
 
