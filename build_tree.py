@@ -462,16 +462,16 @@ def print_c_code(states,probabilities,size,symbol_table,shelf,filename):
     print >> out_f
     print >> out_f,'\tfind \. -name \'%s_expression_*.o\' | xargs ar cr %s_expressions.a'%(filename,filename)
     print >> out_f,'\tfind \. -name \'%s_terms_*.o\' | xargs ar cr %s_terms.a'%(filename,filename)
-    print >> out_f,'\tcc -lm -o %s'%(filename),'%s.o'%(filename),'%s_expressions.a'%(filename),'%s_terms.a'%(filename)
+    print >> out_f,'\tcc -lm -O3 -o %s'%(filename),'%s.o'%(filename),'%s_expressions.a'%(filename),'%s_terms.a'%(filename)
     print >> out_f
     print >> out_f,'%s.o'%(filename),':','%s.c'%(filename)
-    print >> out_f,'\tcc -c -o %s.o'%(filename),'%s.c'%(filename)
+    print >> out_f,'\tcc -O3 -c -o %s.o'%(filename),'%s.c'%(filename)
     for x in range(len(states)):
         print >> out_f,'%s_expression_%d.o'%(filename,x),':','%s_expression_%d.c'%(filename,x)
-        print >> out_f,'\tcc -c -o %s_expression_%d.o'%(filename,x),'%s_expression_%d.c'%(filename,x)
+        print >> out_f,'\tcc -O3 -c -o %s_expression_%d.o'%(filename,x),'%s_expression_%d.c'%(filename,x)
     for x in range((len(probabilities)/200)+1):
         print >> out_f,'%s_terms_%d.o'%(filename,x),':','%s_terms_%d.c'%(filename,x)
-        print >> out_f,'\tcc -c -o %s_terms_%d.o'%(filename,x),'%s_terms_%d.c'%(filename,x)
+        print >> out_f,'\tcc -O3 -c -o %s_terms_%d.o'%(filename,x),'%s_terms_%d.c'%(filename,x)
     print >> out_f
     print >> out_f
     out_f.close()
@@ -594,9 +594,11 @@ for x in range(1,number_of_generations+1):
 print >> f
 print >> f
 print >> f,'clean :'
-print >> f,'\trm',
 for x in range(1,number_of_generations+1):
-    print >> f,'generation_%03d_summary.o generation_%03d_summary_expression_*.o generation_%03d_summary_terms_*.o generation_%03d_summary_expressions.a generation_%03d_summary_terms.a'%(x,x,x,x,x),
+    print >> f,'\tfind \. -name \'generation_%03d_summary_expression_*.o\' | xargs rm'%(x)
+    print >> f,'\tfind \. -name \'generation_%03d_summary_terms_*.o\' | xargs rm'%(x)
+    print >> f,'\trm',
+    print >> f,'generation_%03d_summary.o generation_%03d_summary_expressions.a generation_%03d_summary_terms.a'%(x,x,x)
 print >> f
 print >> f
 f.close()
