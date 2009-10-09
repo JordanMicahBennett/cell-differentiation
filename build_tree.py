@@ -170,9 +170,9 @@ class SymbolTable:
         for x in range(len(prob)):
             if prob[x] > 0:
                 if prob[x] > 1:
-                    temp.append('pow(rule_%d,%d.0)'%(x,prob[x]))
+                    temp.append('pow(rules[%d],%d.0)'%(x,prob[x]))
                 else:
-                    temp.append('rule_%d'%(x))
+                    temp.append('rules[%d]'%(x))
         return join(temp,'*')
     def probability_dict_to_string(self,prob_dict):
         temp = []
@@ -183,12 +183,11 @@ class SymbolTable:
         if len(temp) > 0:
             return join(temp,'+')
         return '0.0'
-    def probability_dict_to_c_string(self,prob_dict):
-        temp = ['result = 0.0;']
+    def probability_dict_to_c_string(self,prob_dict,probabilities):
+        temp = []
         for prob,count in prob_dict.iteritems():
-            prob = load(prob)
             if count > 0:
-                temp.append(join(['result += ',self.probability_to_c_string(prob,count),';'],''))
+                temp.append('result += %d.0*terms[%d];'%(count,probabilities[prob]))
         return join(temp,'\n')
     def parse_state(self,input):
         temp = input.rstrip('\n').split(':')
@@ -365,48 +364,51 @@ def print_states(shelf,symbol_table,filename):
     out_f.close()
     return
 
-## Creates a summary shelve
-def make_summary(summary,shelf,symbol_table):
-    max_count = 0
-    size = len(shelf)
-    current_count = 0
-    for state,prob_dict in shelf.iteritems():
+## Print summary table
+def print_c_code(states,probabilities,size,symbol_table,shelf,filename):
+
+    ## Expressions
+    for state,x in states.iteritems():
+        out_f = open(filename + '_expression_%d.c'%(x),'w')
+        print >> out_f,'void expression_%d(double* terms, double table[][%d]) {'%(x,len(symbol_table.symbols))
+        print >> out_f,'double result = 0.0;'
+        print >> out_f,symbol_table.probability_dict_to_c_string(shelf[state],probabilities)
         state = load(state)
-        print "Progress: %4.1f %% \r"%(current_count * (100.0 / (size + 1))),
-        for x in range(len(symbol_table.symbols)):
-            if (state[x] > max_count):
-                max_count = state[x]
-            summary_index = dump((symbol_table.symbols[x], state[x]))
-            add_shelf_prob_dict(summary,summary_index,prob_dict)
-        current_count += 1
-    print "Progress: %4.1f %% \r"%(100.0),
-    return max_count+1
+        for y in range(len(state)):
+            print >> out_f,'table[%d][%d] += result;'%(state[y],y)
+        print >> out_f,'return;}'
+        out_f.close()
 
-## Print summary table
-def print_summary(summary,size,symbol_table,filename):
-    out_f = open(filename,'w')
-    ## Header
-    for x in symbol_table.symbols:
-        print >> out_f,"\"%s\""%(x),
-    print >> out_f
-    for count in range(size):
-        print >> out_f,count,
-        print "Printing Progress: %4.1f %% \r"%(count * (100.0 / (size + 1))),
-        for symbol in symbol_table.symbols:
-            summary_index = dump((symbol,count))
-            if summary.has_key(summary_index):
-                prob_dict = summary[summary_index]
-            else:
-                prob_dict = dict()
-            print >> out_f,"\"%s\""%(symbol_table.probability_dict_to_string(prob_dict)),
-        print >> out_f
+    ## Terms
+    terms_count = 0
+    out_f = open(filename + '_terms_%d.c'%(terms_count / 200),'w')
+    print >> out_f,'#include <math.h>'
+    print >> out_f,'void terms_%d(double* rules, double* probs) {'%(0)
+    for prob,x in probabilities.iteritems():
+        terms_count += 1
+        print >> out_f,'probs[%d] = %s;'%(x,symbol_table.probability_to_c_string(load(prob)))        
+        if terms_count % 200 == 0:
+            print >> out_f,'return;}'
+            out_f.close()
+            out_f = open(filename + '_terms_%d.c'%(terms_count / 200),'w')
+            print >> out_f,'#include <math.h>'
+            print >> out_f,'void terms_%d(double* rules, double* probs) {'%(terms_count / 200)
+    print >> out_f,'return;}'
     out_f.close()
-    print "Printing Progress: %4.1f %% \r"%(100.0),
 
-## Print summary table
-def print_c_code(summary,size,symbol_table,filename):
-    out_f = open(filename,'w')
-    ## Header
+    ## Main
+    out_f = open(filename + '.c','w')
+    print >> out_f,'#include <stdio.h>'
+    print >> out_f,'#include <stdlib.h>'
+    print >> out_f,'#include <malloc.h>'
+    print >> out_f
+    print >> out_f,'// Expressions that compute the probabilities'
+    for count in range(len(states)):
+        print >> out_f,'void expression_%d(double*,double[][%d]);'%(count,len(symbol_table.symbols))
+    print >> out_f
+    print >> out_f,'// Precomputed terms for the probabilities'
+    for count in range((len(probabilities)/200)+1):
+        print >> out_f,'void terms_%d(double*,double*);'%(count)
 
     ## Find unique symbols in rule probabilities
     unique_symbols = set()
@@ -414,39 +416,68 @@ def print_c_code(summary,size,symbol_table,filename):
         unique_symbols = unique_symbols.union(simplify(rule_prob).atoms(Symbol))
     unique_symbols = list(unique_symbols)
 
-    print >> out_f,'#include <stdio.h>'
-    print >> out_f,'#include <stdlib.h>'
-    print >> out_f,'#include <math.h>'
     print >> out_f,'int main(int argc, char* argv[]) {'
     print >> out_f,'if (argc != %d) {'%(len(unique_symbols)+1)
     print >> out_f,'printf(\"\\nUsage: %s',
-    for symbol in unique_symbols: print >> out_f,'%s '%(symbol),
+    for symbol in unique_symbols: print >> out_f,'%s'%(symbol),
     print >> out_f,'\\n\\n\",argv[0]);'
     print >> out_f,'return -1; }'
     for x in range(len(unique_symbols)):
         print >> out_f,'double %s = atof(argv[%d]);'%(unique_symbols[x],x+1)
+    print >> out_f,'int x,y;'
+    print >> out_f,'double table[%d][%d];'%(size,len(symbol_table.symbols))
+    print >> out_f,'for (x = 0; x < %d; x++) for (y = 0; y < %d; y++) table[x][y] = 0;'%(size,len(symbol_table.symbols))
+    print >> out_f,'double* rules = malloc(sizeof(double)*%d);'%(len(symbol_table.rules_probabilities))
+    print >> out_f,'double* probs = malloc(sizeof(double)*%d);'%(len(probabilities))
+
+    ## Pre-calculate those values
     for x in range(len(symbol_table.rules_probabilities)):
-        print >> out_f,'double rule_%d = %s;'%(x,symbol_table.rules_probabilities[x]);
-    print >> out_f,'double result;'
+        print >> out_f,'rules[%d] = %s;'%(x,symbol_table.rules_probabilities[x]);
+    for x in range((len(probabilities)/200)+1):
+        print >> out_f,'terms_%d(rules,probs);'%(x)
+    for state,x in states.iteritems():
+        print >> out_f,'expression_%d(probs,table);'%(x)
 
     for x in symbol_table.symbols:
         print >> out_f,'printf(\"%s \");'%(x)
     print >> out_f,'printf(\"\\n\");'
-    for count in range(size):
-#         print >> out_f,'printf(\"%d \");'%count
-        print "Code Generation Progress: %4.1f %% \r"%(count * (100.0 / (size + 1))),
-        for symbol in symbol_table.symbols:
-            summary_index = dump((symbol,count))
-            try:
-                prob_dict = summary[summary_index]
-            except:
-                prob_dict = dict()
-            print >> out_f,symbol_table.probability_dict_to_c_string(prob_dict)
-            print >> out_f,'printf(\"%0.18G','\",result);'
+    for x in range(size):
+#        print >> out_f,'printf(\"%d \");'%x
+        for y in range(len(symbol_table.symbols)):
+            print >> out_f,'printf(\"%0.18G \",',
+            print >> out_f,'table[%d][%d]);'%(x,y)
         print >> out_f,'printf(\"\\n\");'
+    print >> out_f,'free(rules);'
+    print >> out_f,'free(probs);'
     print >> out_f,'return 0; }'
     out_f.close()
-    print "Code Generation Progress: %4.1f %% \r"%(100.0),
+
+    ## Makefile
+    out_f = open('Makefile','a')
+    print >> out_f,filename,':','%s.o'%(filename),
+    for x in range(len(states)):
+        print >> out_f,'%s_expression_%d.o'%(filename,x),
+    for x in range((len(probabilities)/200)+1):
+        print >> out_f,'%s_terms_%d.o'%(filename,x),
+    print >> out_f
+    print >> out_f,'\tcc -lm -o %s'%(filename),'%s.o'%(filename),
+    for x in range(len(states)):
+        print >> out_f,'%s_expression_%d.o'%(filename,x),
+    for x in range((len(probabilities)/200)+1):
+        print >> out_f,'%s_terms_%d.o'%(filename,x),
+    print >> out_f
+    print >> out_f
+    print >> out_f,'%s.o'%(filename),':','%s.c'%(filename)
+    print >> out_f,'\tcc -c -o %s.o'%(filename),'%s.c'%(filename)
+    for x in range(len(states)):
+        print >> out_f,'%s_expression_%d.o'%(filename,x),':','%s_expression_%d.c'%(filename,x)
+        print >> out_f,'\tcc -c -o %s_expression_%d.o'%(filename,x),'%s_expression_%d.c'%(filename,x)
+    for x in range((len(probabilities)/200)+1):
+        print >> out_f,'%s_terms_%d.o'%(filename,x),':','%s_terms_%d.c'%(filename,x)
+        print >> out_f,'\tcc -c -o %s_terms_%d.o'%(filename,x),'%s_terms_%d.c'%(filename,x)
+    print >> out_f
+    print >> out_f
+    out_f.close()
 
 def expand_state(state,base_prob_dict,gen_shelf,expand_shelf,symbol_table):
     state_node = Node(state,symbol_table)
@@ -558,6 +589,21 @@ if not symbol_table.read_rules(rule_file):
 ## Read initial states
 populate_shelf(last_gen,init_file,symbol_table)
 
+## Start new Makefile
+f = open('Makefile','w')
+print >> f,'all :',
+for x in range(1,number_of_generations+1):
+    print >> f,'generation_%03d_summary'%(x),
+print >> f
+print >> f
+print >> f,'clean :'
+print >> f,'\trm',
+for x in range(1,number_of_generations+1):
+    print >> f,'generation_%03d_summary.o generation_%03d_summary_expression_*.o generation_%03d_summary_terms_*.o'%(x,x,x),
+print >> f
+print >> f
+f.close()
+
 if len(last_gen) <= 0:
     sys.stderr.write('\nERROR! Initial state file has no data: %s\n\n'%(init_file))
     rootexit()
@@ -611,27 +657,31 @@ for n in range(1,number_of_generations+1):
     event_end = time.time()
     print
     print 'Time elapsed:',(event_end - event_start)
-    print 'Processing summary information...'
+    print 'Generating C code...'
     event_start = time.time()
 
     ## Create summary table
-    summary = shelve.open('.summary_%03d.%d'%(n,os.getpid()))
-    sum_size = make_summary(summary,gen_shelf,symbol_table)
-    print
+    max_count = 0
+    probabilities = set()
+    states = dict(zip(gen_shelf.keys(),range(len(gen_shelf))))
+    for state in states.iterkeys():
+        for prob,count in gen_shelf[state].iteritems():
+            probabilities.add(prob)
+        state = load(state)
+        if max(state) > max_count:
+            max_count = max(state)
+    probabilities = dict(zip(probabilities,range(len(probabilities))))
+    max_count += 1
 
-    print_summary(summary,
-                  sum_size,
-                  symbol_table,'generation_%03d_summary.txt'%(n))
-    print
+    print_c_code(states,
+                 probabilities,
+                 max_count,
+                 symbol_table,
+                 gen_shelf,
+                 'generation_%03d_summary'%(n))
 
-    print_c_code(summary,
-                 sum_size,
-                 symbol_table,'generation_%03d_summary.c'%(n))        
-    print
-
-    summary.close()
-    for filename in glob.glob('.summary_%03d.%d*'%(n,os.getpid())):
-        os.remove(filename)
+    del probabilities
+    del states
 
     event_end = time.time()
     gen_end = time.time()
@@ -655,14 +705,3 @@ for filename in glob.glob('.generation_%03d.%d*'%(number_of_generations,os.getpi
     os.remove(filename)
 for filename in glob.glob('.expand.%d*'%(os.getpid())):
     os.remove(filename)
-
-f = open('Makefile','w')
-print >> f,'all:',
-for n in range(1,number_of_generations+1):
-    print >> f,'generation_%03d_summary'%(n),
-print >> f
-print >> f
-for n in range(1,number_of_generations+1):
-    print >> f,'generation_%03d_summary: generation_%03d_summary.c'%(n,n)
-    print >> f,'\tcc -o generation_%03d_summary generation_%03d_summary.c -lm'%(n,n)
-f.close()
