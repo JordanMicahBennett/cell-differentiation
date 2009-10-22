@@ -661,15 +661,21 @@ for n in range(1,number_of_generations+1):
 
     ## Create summary table
     max_count = 0
-    probabilities = set()
-    states = dict(zip(gen_shelf.keys(),range(len(gen_shelf))))
+    probabilities = shelve.open('.probabilities_%03d.%d'%(n,os.getpid()))
+    states = shelve.open('.states_%03d.%d'%(n,os.getpid()))
+    temp_count = 0
+    for state in gen_shelf.iterkeys():
+        states[state] = temp_count
+        temp_count += 1
+    temp_count = 0
     for state in states.iterkeys():
-        for prob,count in gen_shelf[state].iteritems():
-            probabilities.add(prob)
+        for prob in gen_shelf[state].iterkeys():
+            if not probabilities.has_key(prob):
+                probabilities[prob] = temp_count
+                temp_count += 1
         state = load(state)
         if max(state) > max_count:
             max_count = max(state)
-    probabilities = dict(zip(probabilities,range(len(probabilities))))
     max_count += 1
 
     print_c_code(states,
@@ -678,9 +684,6 @@ for n in range(1,number_of_generations+1):
                  symbol_table,
                  gen_shelf,
                  'generation_%03d_summary'%(n))
-
-    del probabilities
-    del states
 
     event_end = time.time()
     gen_end = time.time()
@@ -691,6 +694,10 @@ for n in range(1,number_of_generations+1):
     ## Promote to next generation
     last_gen.close()
     for filename in glob.glob('.generation_%03d.%d*'%(n-1,os.getpid())):
+        os.remove(filename)
+    for filename in glob.glob('.probabilities_%03d.%d*'%(n,os.getpid())):
+        os.remove(filename)
+    for filename in glob.glob('.states_%03d.%d*'%(n,os.getpid())):
         os.remove(filename)
     last_gen = gen_shelf
 
