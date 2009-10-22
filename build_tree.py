@@ -693,6 +693,8 @@ for n in range(1,number_of_generations+1):
 
     ## Promote to next generation
     last_gen.close()
+    probabilities.close()
+    states.close()
     for filename in glob.glob('.generation_%03d.%d*'%(n-1,os.getpid())):
         os.remove(filename)
     for filename in glob.glob('.probabilities_%03d.%d*'%(n,os.getpid())):
