@@ -187,7 +187,7 @@ class SymbolTable:
         temp = []
         for prob,count in prob_dict.iteritems():
             if count > 0:
-                temp.append('result += %d.0*terms[%d];'%(count,probabilities[prob]))
+                temp.append('*result += %d.0*terms[%d];'%(count,probabilities[prob]))
         return join(temp,'\n')
     def parse_state(self,input):
         temp = input.rstrip('\n').split(':')
@@ -364,18 +364,61 @@ def print_states(shelf,symbol_table,filename):
     out_f.close()
     return
 
+## Print probabilities code
+def print_rules_code(symbol_table):
+    ## Find unique symbols in rule probabilities
+    unique_symbols = set()
+    for rule_prob in symbol_table.rules_probabilities:
+        unique_symbols = unique_symbols.union(simplify(rule_prob).atoms(Symbol))
+    unique_symbols = list(unique_symbols)
+
+    ## Probabilities
+    out_f = open('rule_probabilities.c','w')
+    print >> out_f,'#include <stdio.h>'
+    print >> out_f,'#include <stdlib.h>'
+    print >> out_f,'#include <malloc.h>'
+    print >> out_f
+    print >> out_f,'int main(int argc, char* argv[]) {'
+    print >> out_f,'if (argc != %d) {'%(len(unique_symbols)+1)
+    print >> out_f,'printf(\"\\nUsage: %s',
+    for symbol in unique_symbols: print >> out_f,'%s'%(symbol),
+    print >> out_f,'\\n\\n\",argv[0]);'
+    print >> out_f,'return -1; }'
+    print >> out_f,'double total;'
+    for x in range(len(unique_symbols)):
+        print >> out_f,'double %s = atof(argv[%d]);'%(unique_symbols[x],x+1)
+    print >> out_f,'double* rules = malloc(sizeof(double)*%d);'%(len(symbol_table.rules_probabilities))
+    for x in range(len(symbol_table.rules_probabilities)):
+        print >> out_f,'rules[%d] = %s;'%(x,symbol_table.rules_probabilities[x]);
+    print >> out_f,'printf(\"Symbol\\tRule\\tProbability\\n\");'
+    for x in range(len(symbol_table.symbols)):
+        print >> out_f,'total = 0.0;'
+        for y in range(len(symbol_table.rules_inv[x])):
+            print >> out_f,'printf(\"%s\\t%s'%(symbol_table.symbols[x],
+                                            symbol_table.state_to_string(symbol_table.rules[symbol_table.rules_inv[x][y]])),
+            print >> out_f,'\\t%0.18G\\n\",',
+            print >> out_f,'rules[%d]);'%(symbol_table.rules_inv[x][y])
+            print >> out_f,'total += rules[%d];'%(symbol_table.rules_inv[x][y])
+        print >> out_f,'printf(\"%s\\t%s'%(symbol_table.symbols[x],
+                                           symbol_table.symbols[x]),
+        print >> out_f,'\\t%0.18G\\n\", 1.0-total);'
+
+    print >> out_f,'free(rules);'
+    print >> out_f,'return 0;}'
+    out_f.close()
+
 ## Print summary table
 def print_c_code(states,probabilities,size,symbol_table,shelf,filename):
 
     ## Expressions
     for state,x in states.iteritems():
         out_f = open(filename + '_expression_%d.c'%(x),'w')
-        print >> out_f,'void expression_%d(double* terms, double table[][%d]) {'%(x,len(symbol_table.symbols))
-        print >> out_f,'double result = 0.0;'
+        print >> out_f,'void expression_%d(double* terms, double* result, double table[][%d]) {'%(x,len(symbol_table.symbols))
+        print >> out_f,'*result = 0.0;'
         print >> out_f,symbol_table.probability_dict_to_c_string(shelf[state],probabilities)
         state = load(state)
         for y in range(len(state)):
-            print >> out_f,'table[%d][%d] += result;'%(state[y],y)
+            print >> out_f,'table[%d][%d] += *result;'%(state[y],y)
         print >> out_f,'return;}'
         out_f.close()
 
@@ -402,43 +445,6 @@ def print_c_code(states,probabilities,size,symbol_table,shelf,filename):
         unique_symbols = unique_symbols.union(simplify(rule_prob).atoms(Symbol))
     unique_symbols = list(unique_symbols)
 
-    ## Probabilities
-    out_f = open(filename + '_probabilities.c','w')
-    print >> out_f,'#include <stdio.h>'
-    print >> out_f,'#include <stdlib.h>'
-    print >> out_f,'#include <malloc.h>'
-    print >> out_f
-    print >> out_f,'int main(int argc, char* argv[]) {'
-    print >> out_f,'if (argc != %d) {'%(len(unique_symbols)+1)
-    print >> out_f,'printf(\"\\nUsage: %s',
-    for symbol in unique_symbols: print >> out_f,'%s'%(symbol),
-    print >> out_f,'\\n\\n\",argv[0]);'
-    print >> out_f,'return -1; }'
-    print >> out_f,'double total;'
-    for x in range(len(unique_symbols)):
-        print >> out_f,'double %s = atof(argv[%d]);'%(unique_symbols[x],x+1)
-    print >> out_f,'double* rules = malloc(sizeof(double)*%d);'%(len(symbol_table.rules_probabilities))
-    for x in range(len(symbol_table.rules_probabilities)):
-        print >> out_f,'rules[%d] = %s;'%(x,symbol_table.rules_probabilities[x]);
-    print >> out_f,'printf(\"Symbol\\tRule\\tProbability\\n\");'
-    for x in range(len(symbol_table.symbols)):
-        print >> out_f,'total = 0.0;'
-        for y in range(len(symbol_table.rules_inv[x])):
-            print >> out_f,'printf(\"%s\\t%s'%(symbol_table.symbols[x],
-                                            symbol_table.state_to_string(symbol_table.rules[symbol_table.rules_inv[x][y]])),
-            print >> out_f,'\\t%0.18G\\n\",',
-            print >> out_f,'rules[%d]);'%(symbol_table.rules_inv[x][y])
-            print >> out_f,'total += rules[%d];'%(symbol_table.rules_inv[x][y])
-        ## print >> out_f,'if (total < 1.0) {'
-        print >> out_f,'   printf(\"%s\\t%s'%(symbol_table.symbols[x],
-                                              symbol_table.symbols[x]),
-        print >> out_f,'\\t%0.18G\\n\", 1.0-total);'
-        ## print >> out_f,'}'
-
-    print >> out_f,'free(rules);'
-    print >> out_f,'return 0;}'
-    out_f.close()
-
     ## Main
     out_f = open(filename + '.c','w')
     print >> out_f,'#include <stdio.h>'
@@ -447,7 +453,7 @@ def print_c_code(states,probabilities,size,symbol_table,shelf,filename):
     print >> out_f
     print >> out_f,'// Expressions that compute the probabilities'
     for count in range(len(states)):
-        print >> out_f,'void expression_%d(double*,double[][%d]);'%(count,len(symbol_table.symbols))
+        print >> out_f,'void expression_%d(double*,double*,double[][%d]);'%(count,len(symbol_table.symbols))
     print >> out_f
     print >> out_f,'// Precomputed terms for the probabilities'
     for count in range((len(probabilities)/200)+1):
@@ -462,6 +468,7 @@ def print_c_code(states,probabilities,size,symbol_table,shelf,filename):
     for x in range(len(unique_symbols)):
         print >> out_f,'double %s = atof(argv[%d]);'%(unique_symbols[x],x+1)
     print >> out_f,'int x,y;'
+    print >> out_f,'double result = 0.0;'
     print >> out_f,'double table[%d][%d];'%(size,len(symbol_table.symbols))
     print >> out_f,'for (x = 0; x < %d; x++) for (y = 0; y < %d; y++) table[x][y] = 0;'%(size,len(symbol_table.symbols))
     print >> out_f,'double* rules = malloc(sizeof(double)*%d);'%(len(symbol_table.rules_probabilities))
@@ -473,7 +480,7 @@ def print_c_code(states,probabilities,size,symbol_table,shelf,filename):
     for x in range((len(probabilities)/200)+1):
         print >> out_f,'terms_%d(rules,probs);'%(x)
     for state,x in states.iteritems():
-        print >> out_f,'expression_%d(probs,table);'%(x)
+        print >> out_f,'expression_%d(probs,&result,table);'%(x)
 
     for x in symbol_table.symbols:
         print >> out_f,'printf(\"%s \");'%(x)
@@ -489,23 +496,76 @@ def print_c_code(states,probabilities,size,symbol_table,shelf,filename):
     print >> out_f,'return 0; }'
     out_f.close()
 
+    ## Unreduced Main
+    out_f = open(filename + '_unreduced.c','w')
+    print >> out_f,'#include <stdio.h>'
+    print >> out_f,'#include <stdlib.h>'
+    print >> out_f,'#include <malloc.h>'
+    print >> out_f
+    print >> out_f,'// Expressions that compute the probabilities'
+    for count in range(len(states)):
+        print >> out_f,'void expression_%d(double*,double*,double[][%d]);'%(count,len(symbol_table.symbols))
+    print >> out_f
+    print >> out_f,'// Precomputed terms for the probabilities'
+    for count in range((len(probabilities)/200)+1):
+        print >> out_f,'void terms_%d(double*,double*);'%(count)
+
+    print >> out_f,'int main(int argc, char* argv[]) {'
+    print >> out_f,'if (argc != %d) {'%(len(unique_symbols)+1)
+    print >> out_f,'printf(\"\\nUsage: %s',
+    for symbol in unique_symbols: print >> out_f,'%s'%(symbol),
+    print >> out_f,'\\n\\n\",argv[0]);'
+    print >> out_f,'return -1; }'
+    for x in range(len(unique_symbols)):
+        print >> out_f,'double %s = atof(argv[%d]);'%(unique_symbols[x],x+1)
+    print >> out_f,'int x,y;'
+    print >> out_f,'double result = 0.0;'
+    print >> out_f,'double table[%d][%d];'%(size,len(symbol_table.symbols))
+    print >> out_f,'for (x = 0; x < %d; x++) for (y = 0; y < %d; y++) table[x][y] = 0;'%(size,len(symbol_table.symbols))
+    print >> out_f,'double* rules = malloc(sizeof(double)*%d);'%(len(symbol_table.rules_probabilities))
+    print >> out_f,'double* probs = malloc(sizeof(double)*%d);'%(len(probabilities))
+
+    ## Pre-calculate those values
+    for x in range(len(symbol_table.rules_probabilities)):
+        print >> out_f,'rules[%d] = %s;'%(x,symbol_table.rules_probabilities[x]);
+    for x in range((len(probabilities)/200)+1):
+        print >> out_f,'terms_%d(rules,probs);'%(x)
+    for state,x in states.iteritems():
+        print >> out_f,'expression_%d(probs,&result,table);'%(x)
+        print >> out_f,'printf(\"%s :'%(symbol_table.state_to_string(load(state))),
+        print >> out_f,'%0.18G\\n\",result);'
+
+    print >> out_f,'free(rules);'
+    print >> out_f,'free(probs);'
+    print >> out_f,'return 0; }'
+    out_f.close()
+
     ## Makefile
     out_f = open('Makefile','a')
-    print >> out_f,filename,':','%s_probabilities %s.o'%(filename,filename),
-    for x in range(len(states)):
-        print >> out_f,'%s_expression_%d.o'%(filename,x),
-    for x in range((len(probabilities)/200)+1):
-        print >> out_f,'%s_terms_%d.o'%(filename,x),
-    print >> out_f
-    print >> out_f,'\tfind \. -name \'%s_expression_*.o\' | xargs ar cr %s_expressions.a'%(filename,filename)
-    print >> out_f,'\tfind \. -name \'%s_terms_*.o\' | xargs ar cr %s_terms.a'%(filename,filename)
+    print >> out_f,filename,':','%s.o %s_expressions.a %s_terms.a'%(filename,filename,filename)
     print >> out_f,'\tcc -lm -O3 -o %s'%(filename),'%s.o'%(filename),'%s_expressions.a'%(filename),'%s_terms.a'%(filename)
     print >> out_f
-    print >> out_f,'%s_probabilities'%(filename),':','%s_probabilities.c'%(filename)
-    print >> out_f,'\tcc -O3 -o %s_probabilities'%(filename),'%s_probabilities.c'%(filename)
+    print >> out_f,'%s_unreduced'%(filename),':','%s_unreduced.o %s_expressions.a %s_terms.a'%(filename,filename,filename)
+    print >> out_f,'\tcc -lm -O3 -o %s_unreduced'%(filename),'%s_unreduced.o'%(filename),'%s_expressions.a'%(filename),'%s_terms.a'%(filename)
     print >> out_f
     print >> out_f,'%s.o'%(filename),':','%s.c'%(filename)
     print >> out_f,'\tcc -O3 -c -o %s.o'%(filename),'%s.c'%(filename)
+    print >> out_f
+    print >> out_f,'%s_unreduced.o'%(filename),':','%s_unreduced.c'%(filename)
+    print >> out_f,'\tcc -O3 -c -o %s_unreduced.o'%(filename),'%s_unreduced.c'%(filename)
+    print >> out_f
+    print >> out_f,'%s_expressions.a'%(filename),':',
+    for x in range(len(states)):
+        print >> out_f,'%s_expression_%d.o'%(filename,x),
+    print >> out_f
+    print >> out_f,'\tfind \. -name \'%s_expression_*.o\' | xargs ar cr %s_expressions.a'%(filename,filename)
+    print >> out_f
+    print >> out_f,'%s_terms.a'%(filename),':',
+    for x in range((len(probabilities)/200)+1):
+        print >> out_f,'%s_terms_%d.o'%(filename,x),
+    print >> out_f
+    print >> out_f,'\tfind \. -name \'%s_terms_*.o\' | xargs ar cr %s_terms.a'%(filename,filename)
+    print >> out_f
     for x in range(len(states)):
         print >> out_f,'%s_expression_%d.o'%(filename,x),':','%s_expression_%d.c'%(filename,x)
         print >> out_f,'\tcc -O3 -c -o %s_expression_%d.o'%(filename,x),'%s_expression_%d.c'%(filename,x)
@@ -626,11 +686,14 @@ if not symbol_table.read_rules(rule_file):
 ## Read initial states
 populate_shelf(last_gen,init_file,symbol_table)
 
+## Print rules code
+print_rules_code(symbol_table)
+
 ## Start new Makefile
 f = open('Makefile','w')
-print >> f,'all :',
+print >> f,'all : rule_probabilities',
 for x in range(1,number_of_generations+1):
-    print >> f,'generation_%03d_summary'%(x),
+    print >> f,'generation_%03d_summary generation_%03d_summary_unreduced'%(x,x),
 print >> f
 print >> f
 print >> f,'clean :'
@@ -638,10 +701,14 @@ for x in range(1,number_of_generations+1):
     print >> f,'\tfind \. -name \'generation_%03d_summary_expression_*.o\' | xargs rm'%(x)
     print >> f,'\tfind \. -name \'generation_%03d_summary_terms_*.o\' | xargs rm'%(x)
     print >> f,'\trm',
-    print >> f,'generation_%03d_summary.o generation_%03d_summary_expressions.a generation_%03d_summary_terms.a'%(x,x,x)
+    print >> f,'generation_%03d_summary.o generation_%03d_summary_unreduced.o generation_%03d_summary_expressions.a generation_%03d_summary_terms.a'%(x,x,x,x)
+print >> f
+print >> f,'rule_probabilities : rule_probabilities.c'
+print >> f,'\tcc -O3 -o rule_probabilities rule_probabilities.c'
 print >> f
 print >> f
 f.close()
+
 
 if len(last_gen) <= 0:
     sys.stderr.write('\nERROR! Initial state file has no data: %s\n\n'%(init_file))
