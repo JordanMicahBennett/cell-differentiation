@@ -396,6 +396,49 @@ def print_c_code(states,probabilities,size,symbol_table,shelf,filename):
     print >> out_f,'return;}'
     out_f.close()
 
+    ## Find unique symbols in rule probabilities
+    unique_symbols = set()
+    for rule_prob in symbol_table.rules_probabilities:
+        unique_symbols = unique_symbols.union(simplify(rule_prob).atoms(Symbol))
+    unique_symbols = list(unique_symbols)
+
+    ## Probabilities
+    out_f = open(filename + '_probabilities.c','w')
+    print >> out_f,'#include <stdio.h>'
+    print >> out_f,'#include <stdlib.h>'
+    print >> out_f,'#include <malloc.h>'
+    print >> out_f
+    print >> out_f,'int main(int argc, char* argv[]) {'
+    print >> out_f,'if (argc != %d) {'%(len(unique_symbols)+1)
+    print >> out_f,'printf(\"\\nUsage: %s',
+    for symbol in unique_symbols: print >> out_f,'%s'%(symbol),
+    print >> out_f,'\\n\\n\",argv[0]);'
+    print >> out_f,'return -1; }'
+    print >> out_f,'double total;'
+    for x in range(len(unique_symbols)):
+        print >> out_f,'double %s = atof(argv[%d]);'%(unique_symbols[x],x+1)
+    print >> out_f,'double* rules = malloc(sizeof(double)*%d);'%(len(symbol_table.rules_probabilities))
+    for x in range(len(symbol_table.rules_probabilities)):
+        print >> out_f,'rules[%d] = %s;'%(x,symbol_table.rules_probabilities[x]);
+    print >> out_f,'printf(\"Symbol\\tRule\\tProbability\\n\");'
+    for x in range(len(symbol_table.symbols)):
+        print >> out_f,'total = 0.0;'
+        for y in range(len(symbol_table.rules_inv[x])):
+            print >> out_f,'printf(\"%s\\t%s'%(symbol_table.symbols[x],
+                                            symbol_table.state_to_string(symbol_table.rules[symbol_table.rules_inv[x][y]])),
+            print >> out_f,'\\t%0.18G\\n\",',
+            print >> out_f,'rules[%d]);'%(symbol_table.rules_inv[x][y])
+            print >> out_f,'total += rules[%d];'%(symbol_table.rules_inv[x][y])
+        ## print >> out_f,'if (total < 1.0) {'
+        print >> out_f,'   printf(\"%s\\t%s'%(symbol_table.symbols[x],
+                                              symbol_table.symbols[x]),
+        print >> out_f,'\\t%0.18G\\n\", 1.0-total);'
+        ## print >> out_f,'}'
+
+    print >> out_f,'free(rules);'
+    print >> out_f,'return 0;}'
+    out_f.close()
+
     ## Main
     out_f = open(filename + '.c','w')
     print >> out_f,'#include <stdio.h>'
@@ -409,12 +452,6 @@ def print_c_code(states,probabilities,size,symbol_table,shelf,filename):
     print >> out_f,'// Precomputed terms for the probabilities'
     for count in range((len(probabilities)/200)+1):
         print >> out_f,'void terms_%d(double*,double*);'%(count)
-
-    ## Find unique symbols in rule probabilities
-    unique_symbols = set()
-    for rule_prob in symbol_table.rules_probabilities:
-        unique_symbols = unique_symbols.union(simplify(rule_prob).atoms(Symbol))
-    unique_symbols = list(unique_symbols)
 
     print >> out_f,'int main(int argc, char* argv[]) {'
     print >> out_f,'if (argc != %d) {'%(len(unique_symbols)+1)
@@ -454,7 +491,7 @@ def print_c_code(states,probabilities,size,symbol_table,shelf,filename):
 
     ## Makefile
     out_f = open('Makefile','a')
-    print >> out_f,filename,':','%s.o'%(filename),
+    print >> out_f,filename,':','%s_probabilities %s.o'%(filename,filename),
     for x in range(len(states)):
         print >> out_f,'%s_expression_%d.o'%(filename,x),
     for x in range((len(probabilities)/200)+1):
@@ -463,6 +500,9 @@ def print_c_code(states,probabilities,size,symbol_table,shelf,filename):
     print >> out_f,'\tfind \. -name \'%s_expression_*.o\' | xargs ar cr %s_expressions.a'%(filename,filename)
     print >> out_f,'\tfind \. -name \'%s_terms_*.o\' | xargs ar cr %s_terms.a'%(filename,filename)
     print >> out_f,'\tcc -lm -O3 -o %s'%(filename),'%s.o'%(filename),'%s_expressions.a'%(filename),'%s_terms.a'%(filename)
+    print >> out_f
+    print >> out_f,'%s_probabilities'%(filename),':','%s_probabilities.c'%(filename)
+    print >> out_f,'\tcc -O3 -o %s_probabilities'%(filename),'%s_probabilities.c'%(filename)
     print >> out_f
     print >> out_f,'%s.o'%(filename),':','%s.c'%(filename)
     print >> out_f,'\tcc -O3 -c -o %s.o'%(filename),'%s.c'%(filename)
