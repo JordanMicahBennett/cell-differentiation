@@ -1,14 +1,40 @@
 #!/usr/bin/python -u
-
-use_mpi = True
-try:
-    from mpi4py import MPI
-except:
-    use_mpi = False
+##
+## 
+##                This source code is part of
+## 
+##                          Cell-Diff
+## 
+##       Exact computation of stochastic stem cell models
+## 
+##                        VERSION 1.0.0
+## Written by Joshua L. Phillips.
+## Copyright (c) 2010-2016, Joshua L. Phillips.
+## Check out http://www.cs.mtsu.edu/~jphillips/software.html for more
+## information.
+##
+## This program is free software; you can redistribute it and/or
+## modify it under the terms of the GNU General Public License
+## as published by the Free Software Foundation; either version 2
+## of the License, or (at your option) any later version.
+## 
+## If you want to redistribute modifications, please consider that
+## derived work must not be called official Cell-Diff. Details are found
+## in the README & LICENSE files - if they are missing, get the
+## official version at github.com/douradopalmares/mdsctk/.
+## 
+## To help us fund Cell-Diff development, we humbly ask that you cite
+## the poster on the package - you can find them in the top README file.
+## 
+## For more info, check our website at
+## http://www.cs.mtsu.edu/~jphillips/software.html
+## 
+##
 
 from sympy import simplify
 from sympy import Symbol
 from collections import deque
+from collections import defaultdict
 from string import join
 import os
 import sys
@@ -19,26 +45,18 @@ import shelve
 import cPickle
 import glob
 
-mpi_rank = 0
-mpi_size = 1
-comm = None
-if use_mpi:
-    comm = MPI.COMM_WORLD
-    mpi_rank = comm.Get_rank()
-    mpi_size = comm.Get_size()
-
-if mpi_size == 1:
-    use_mpi = False
-
 ## Pickling - got any vinegar?
 def dump(object):
     return (cPickle.dumps(object,cPickle.HIGHEST_PROTOCOL))
 def load(object):
     return (cPickle.loads(object))
 
+## Special dictionary factory routine
+def zerodict():
+    return (defaultdict(int))
+
 ## Root exit routine
 def rootexit():
-    comm.bcast(None,root=0)
     sys.exit(-1)
 
 def usage():
@@ -58,7 +76,6 @@ class SymbolTable:
     rules_inv = []
     rules_probabilities = []
     use_numeric = True
-    generic_symbol_number = 1
     def pack(self):
         data = []
         data.append(self.symbols)
@@ -67,7 +84,6 @@ class SymbolTable:
         data.append(self.rules_inv)
         data.append(self.rules_probabilities)
         data.append(self.use_numeric)
-        data.append(self.generic_symbol_number)
         return data
     def unpack(self,data):
         self.symbols = data[0]
@@ -76,9 +92,8 @@ class SymbolTable:
         self.rules_inv = data[3]
         self.rules_probabilities = data[4]
         self.use_numeric = data[5]
-        self.generic_symbol_number = data[6]
         return self
-    def write(self,f):
+    def write(self,f=sys.stdout):
         print >> f,'Object:',self
         print >> f,'Symbols:',self.symbols
         print >> f,'Symbols Inv:',self.symbols_inv
@@ -147,7 +162,7 @@ class SymbolTable:
         ## Are we using numbers or self.symbols for probabilities?
         self.use_numeric = True
         for x in range(len(rule_probs)):
-            temp = str(rule_probs[x]).replace(' ','')
+            temp = str(simplify(rule_probs[x])).replace(' ','')
             try:
                 self.rules_probabilities.append(float(temp))
             except:
@@ -186,9 +201,9 @@ class SymbolTable:
         for x in range(len(prob)):
             if prob[x] > 0:
                 if prob[x] > 1:
-                    temp.append('pow(%s,%d.0)'%(self.rules_probabilities[x],prob[x]))
+                    temp.append('pow(rules[%d],%d.0)'%(x,prob[x]))
                 else:
-                    temp.append(self.rules_probabilities[x])
+                    temp.append('rules[%d]'%(x))
         return join(temp,'*')
     def probability_dict_to_string(self,prob_dict):
         temp = []
@@ -199,15 +214,12 @@ class SymbolTable:
         if len(temp) > 0:
             return join(temp,'+')
         return '0.0'
-    def probability_dict_to_c_string(self,prob_dict):
+    def probability_dict_to_c_string(self,prob_dict,probabilities):
         temp = []
         for prob,count in prob_dict.iteritems():
-            prob = load(prob)
             if count > 0:
-                temp.append(self.probability_to_c_string(prob,count))
-        if len(temp) > 0:
-            return join(temp,'+\n')
-        return '0.0'
+                temp.append('*result += %d.0*terms[%d];'%(count,probabilities[prob]))
+        return join(temp,'\n')
     def parse_state(self,input):
         temp = input.rstrip('\n').split(':')
         state = [0] * len(symbol_table.symbols)
@@ -239,58 +251,80 @@ class Node:
     state = None
     expandable = None
     selected = None
+    visited = None
     symbol_table = None
     def __init__(self,state,symbol_table):
-        self.state = list(state)
+        self.state = [0] * len(state)
         self.expandable = list(state)
         self.selected = [0] * len(symbol_table.rules)
+        self.visited = False
         self.symbol_table = symbol_table
     def copy(self):
-        new_node = Node(self.state,self.symbol_table)
-        new_node.expandable = list(self.expandable)
+        new_node = Node(self.expandable,self.symbol_table)
+        new_node.state = list(self.state)
         new_node.selected = list(self.selected)
+        new_node.visited = self.visited
         return new_node
-    def write(self,f):
+    def write(self,f=sys.stdout):
         print >> f,'Object:',self
         print >> f,'State:',self.state
         print >> f,'Expandable:',self.expandable
         print >> f,'Selected:',self.selected
+        print >> f,'Visited:',self.visited
         print >> f,'Symbol Table:',self.symbol_table
-        print >> f,'As String:',self.to_string()
-        print >> f
-    def to_string(self):
-        return (self.symbol_table.state_to_string(self.state) + ' : ' + 
-                self.symbol_table.probability_to_string(self.selected))
-    def expand(self,stack,shelf):
-        expand = -1
-        for x in range(len(self.expandable)):
-            if self.expandable[x] > 0:
-                expand = x
-                break
-        if expand >= 0:
-            self.expandable[expand] -= 1
-            self.state[expand] -= 1
-            stack_size = len(stack)
-            for x in self.symbol_table.rules_inv[expand]: 
-                n = self.copy()
-                for y in range(len(n.state)):
-                    n.state[y] += self.symbol_table.rules[x][y]
-                n.selected[x] += 1
-                stack.append(n)
-            if stack_size == len(stack):
-                self.state[expand] += 1
-                self.expandable[expand] = 0
-                stack.append(self)
+    def expand(self,stack,leaf_dict,expand_shelf):
+        if not self.visited:
+            if not expand_shelf.has_key(dump(self.expandable)):
+                expand_max = max(self.expandable)
+                expand = self.expandable.index(expand_max)
+                if expand_max > 0:
+                    ## Put yourself back on the stack, but now labeled as visited
+                    base = self.copy()
+                    self.visited = True
+                    stack.append(self)
+                    base.expandable[expand] -= 1
+                    base.state[expand] -= 1
+                    for selected in self.symbol_table.rules_inv[expand]: 
+                        n = base.copy()
+                        for x in range(len(n.state)):
+                            n.state[x] += self.symbol_table.rules[selected][x]
+                        n.selected[selected] += 1
+                        stack.append(n)
+                else:
+                    ## You are a leaf. You need to be in the leaf dictionary.
+                    leaf_dict[dump(self.state)][dump(self.selected)] += 1
         else:
-            try:
-                prob_dict = shelf[dump(self.state)]
-                try:
-                    prob_dict[dump(self.selected)] += 1
-                except:
-                    prob_dict[dump(self.selected)] = 1
-            except:
-                prob_dict = { dump(self.selected) : 1 }
-            shelf[dump(self.state)] = prob_dict
+            new_dict = defaultdict(zerodict)
+            expand_max = max(self.expandable)
+            expand = self.expandable.index(expand_max)
+            if expand_max > 0:
+                expandable = list(self.expandable)
+                expandable[expand] -= 1
+                if expand_shelf.has_key(dump(expandable)):
+                    subtree_dict = load(expand_shelf[dump(expandable)])
+                    for selected in self.symbol_table.rules_inv[expand]:
+                        state_update = list(self.symbol_table.rules[selected])
+                        state_update[expand] -= 1
+                        for state,prob_dict in subtree_dict.iteritems():
+                            new_state = load(state)
+                            for x in range(len(new_state)):
+                                new_state[x] += state_update[x]
+                            for prob,count in prob_dict.iteritems():
+                                new_prob = load(prob)
+                                new_prob[selected] += 1
+                                new_dict[dump(new_state)][dump(new_prob)] += count
+                else:
+                    for state,prob_dict in leaf_dict.iteritems():
+                        new_state = load(state)
+                        for x in range(len(new_state)):
+                            new_state[x] -= self.state[x]
+                        for prob,count in prob_dict.iteritems():
+                            new_prob = load(prob)
+                            for x in range(len(new_prob)):
+                                new_prob[x] -= self.selected[x]
+                            new_dict[dump(new_state)][dump(new_prob)] += count
+                    leaf_dict = defaultdict(zerodict)
+            expand_shelf[dump(self.expandable)] = dump(new_dict)                    
         return None
 
 ## Pulls some initial states from a file and populate the shelf
@@ -309,10 +343,11 @@ def multiply(base_prob_dict,prob_dict,result_dict):
         new_prob = load(new_prob)
         for base_prob,base_count in base_prob_dict.iteritems():
             base_prob = load(base_prob)
-            try:
-                result_dict[dump(add_prob_prob(base_prob,new_prob))] += base_count * new_count
-            except:
-                result_dict[dump(add_prob_prob(base_prob,new_prob))] = base_count * new_count
+            temp = dump(add_prob_prob(base_prob,new_prob))
+            if result_dict.has_key(temp):
+                result_dict[temp] += base_count * new_count
+            else:
+                result_dict[temp] = base_count * new_count
 
 def add_prob_prob(dest_prob,src_prob):
     result = list(dest_prob)
@@ -326,9 +361,9 @@ def add_shelf_shelf(dest_shelf,src_shelf):
         add_shelf_prob_dict(dest_shelf,state,src_prob_dict)
 
 def add_shelf_prob_dict(dest_shelf,state,src_prob_dict):
-    try:
+    if dest_shelf.has_key(state):
         dest_prob_dict = dest_shelf[state]
-    except:
+    else:
         dest_prob_dict = dict()
     add_prob_dict_prob_dict(dest_prob_dict,src_prob_dict)
     dest_shelf[state] = dest_prob_dict
@@ -338,9 +373,9 @@ def add_prob_dict_prob_dict(dest_prob_dict,src_prob_dict):
         add_prob_dict_prob(dest_prob_dict,src_prob,src_count)
 
 def add_prob_dict_prob(dest_prob_dict,src_prob,src_count):
-    try:
+    if dest_prob_dict.has_key(src_prob):
         dest_count = dest_prob_dict[src_prob]
-    except:
+    else:
         dest_count = 0
     dest_prob_dict[src_prob] = dest_count + src_count
 
@@ -360,48 +395,80 @@ def print_states(shelf,symbol_table,filename):
     out_f.close()
     return
 
-## Creates a summary shelve
-def make_summary(summary,shelf,symbol_table):
-    max_count = 0
-    size = len(shelf)
-    current_count = 0
-    for state,prob_dict in shelf.iteritems():
-        state = load(state)
-        print "Progress: %4.1f %% \r"%(current_count * (100.0 / (size + 1))),
-        for x in range(len(symbol_table.symbols)):
-            if (state[x] > max_count):
-                max_count = state[x]
-            summary_index = dump((symbol_table.symbols[x], state[x]))
-            add_shelf_prob_dict(summary,summary_index,prob_dict)
-        current_count += 1
-    print "Progress: %4.1f %% \r"%(100.0),
-    return max_count+1
+## Print probabilities code
+def print_rules_code(symbol_table):
+    ## Find unique symbols in rule probabilities
+    unique_symbols = set()
+    for rule_prob in symbol_table.rules_probabilities:
+        unique_symbols = unique_symbols.union(simplify(rule_prob).atoms(Symbol))
+    unique_symbols = list(unique_symbols)
 
-## Print summary table
-def print_summary(summary,size,symbol_table,filename):
-    out_f = open(filename,'w')
-    ## Header
-    for x in symbol_table.symbols:
-        print >> out_f,"\"%s\""%(x),
+    ## Probabilities
+    out_f = open('rule_probabilities.c','w')
+    print >> out_f,'#include <stdio.h>'
+    print >> out_f,'#include <stdlib.h>'
+    print >> out_f,'#include <malloc.h>'
     print >> out_f
-    for count in range(size):
-        print >> out_f,count,
-        print "Printing Progress: %4.1f %% \r"%(count * (100.0 / (size + 1))),
-        for symbol in symbol_table.symbols:
-            summary_index = dump((symbol,count))
-            try:
-                prob_dict = summary[summary_index]
-            except:
-                prob_dict = dict()
-            print >> out_f,"\"%s\""%(symbol_table.probability_dict_to_string(prob_dict)),
-        print >> out_f
+    print >> out_f,'int main(int argc, char* argv[]) {'
+    print >> out_f,'if (argc != %d) {'%(len(unique_symbols)+1)
+    print >> out_f,'printf(\"\\nUsage: %s',
+    for symbol in unique_symbols: print >> out_f,'%s'%(symbol),
+    print >> out_f,'\\n\\n\",argv[0]);'
+    print >> out_f,'return -1; }'
+    print >> out_f,'double total;'
+    for x in range(len(unique_symbols)):
+        print >> out_f,'double %s = atof(argv[%d]);'%(unique_symbols[x],x+1)
+    print >> out_f,'double* rules = malloc(sizeof(double)*%d);'%(len(symbol_table.rules_probabilities))
+    for x in range(len(symbol_table.rules_probabilities)):
+        print >> out_f,'rules[%d] = %s;'%(x,symbol_table.rules_probabilities[x]);
+    print >> out_f,'printf(\"Symbol\\tRule\\tProbability\\n\");'
+    for x in range(len(symbol_table.symbols)):
+        print >> out_f,'total = 0.0;'
+        for y in range(len(symbol_table.rules_inv[x])):
+            print >> out_f,'printf(\"%s\\t%s'%(symbol_table.symbols[x],
+                                            symbol_table.state_to_string(symbol_table.rules[symbol_table.rules_inv[x][y]])),
+            print >> out_f,'\\t%0.18G\\n\",',
+            print >> out_f,'rules[%d]);'%(symbol_table.rules_inv[x][y])
+            print >> out_f,'total += rules[%d];'%(symbol_table.rules_inv[x][y])
+        print >> out_f,'printf(\"%s\\t%s'%(symbol_table.symbols[x],
+                                           symbol_table.symbols[x]),
+        print >> out_f,'\\t%0.18G\\n\", 1.0-total);'
+
+    print >> out_f,'free(rules);'
+    print >> out_f,'return 0;}'
     out_f.close()
-    print "Printing Progress: %4.1f %% \r"%(100.0),
 
 ## Print summary table
-def print_c_code(summary,size,symbol_table,filename):
-    out_f = open(filename,'w')
-    ## Header
+def print_c_code(states,probabilities,size,symbol_table,shelf,filename):
+
+    ## Expressions
+    for state,x in states.iteritems():
+        out_f = open(filename + '_expression_%d.c'%(x),'w')
+        print >> out_f,'void expression_%d(double* terms, double* result, double table[][%d]) {'%(x,len(symbol_table.symbols))
+        print >> out_f,'*result = 0.0;'
+        print >> out_f,symbol_table.probability_dict_to_c_string(shelf[state],probabilities)
+        state = load(state)
+        for y in range(len(state)):
+            print >> out_f,'table[%d][%d] += *result;'%(state[y],y)
+        print >> out_f,'return;}'
+        out_f.close()
+
+    ## Terms
+    terms_count = 0
+    out_f = open(filename + '_terms_%d.c'%(terms_count / 200),'w')
+    print >> out_f,'#include <math.h>'
+    print >> out_f,'void terms_%d(double* rules, double* probs) {'%(0)
+    for prob,x in probabilities.iteritems():
+        terms_count += 1
+        print >> out_f,'probs[%d] = %s;'%(x,symbol_table.probability_to_c_string(load(prob)))        
+        if terms_count % 200 == 0:
+            print >> out_f,'return;}'
+            out_f.close()
+            out_f = open(filename + '_terms_%d.c'%(terms_count / 200),'w')
+            print >> out_f,'#include <math.h>'
+            print >> out_f,'void terms_%d(double* rules, double* probs) {'%(terms_count / 200)
+    print >> out_f,'return;}'
+    out_f.close()
 
     ## Find unique symbols in rule probabilities
     unique_symbols = set()
@@ -409,336 +476,378 @@ def print_c_code(summary,size,symbol_table,filename):
         unique_symbols = unique_symbols.union(simplify(rule_prob).atoms(Symbol))
     unique_symbols = list(unique_symbols)
 
+    ## Main
+    out_f = open(filename + '.c','w')
     print >> out_f,'#include <stdio.h>'
     print >> out_f,'#include <stdlib.h>'
-    print >> out_f,'#include <math.h>'
+    print >> out_f,'#include <malloc.h>'
+    print >> out_f
+    print >> out_f,'// Expressions that compute the probabilities'
+    for count in range(len(states)):
+        print >> out_f,'void expression_%d(double*,double*,double[][%d]);'%(count,len(symbol_table.symbols))
+    print >> out_f
+    print >> out_f,'// Precomputed terms for the probabilities'
+    for count in range((len(probabilities)/200)+1):
+        print >> out_f,'void terms_%d(double*,double*);'%(count)
+
     print >> out_f,'int main(int argc, char* argv[]) {'
     print >> out_f,'if (argc != %d) {'%(len(unique_symbols)+1)
     print >> out_f,'printf(\"\\nUsage: %s',
-    for symbol in unique_symbols: print >> out_f,'%s '%(symbol),
+    for symbol in unique_symbols: print >> out_f,'%s'%(symbol),
     print >> out_f,'\\n\\n\",argv[0]);'
     print >> out_f,'return -1; }'
     for x in range(len(unique_symbols)):
         print >> out_f,'double %s = atof(argv[%d]);'%(unique_symbols[x],x+1)
-    print >> out_f,'double _result;'
+    print >> out_f,'int x,y;'
+    print >> out_f,'double result = 0.0;'
+    print >> out_f,'double table[%d][%d];'%(size,len(symbol_table.symbols))
+    print >> out_f,'for (x = 0; x < %d; x++) for (y = 0; y < %d; y++) table[x][y] = 0;'%(size,len(symbol_table.symbols))
+    print >> out_f,'double* rules = malloc(sizeof(double)*%d);'%(len(symbol_table.rules_probabilities))
+    print >> out_f,'double* probs = malloc(sizeof(double)*%d);'%(len(probabilities))
+
+    ## Pre-calculate those values
+    for x in range(len(symbol_table.rules_probabilities)):
+        print >> out_f,'rules[%d] = %s;'%(x,symbol_table.rules_probabilities[x]);
+    for x in range((len(probabilities)/200)+1):
+        print >> out_f,'terms_%d(rules,probs);'%(x)
+    for state,x in states.iteritems():
+        print >> out_f,'expression_%d(probs,&result,table);'%(x)
 
     for x in symbol_table.symbols:
         print >> out_f,'printf(\"%s \");'%(x)
     print >> out_f,'printf(\"\\n\");'
-    for count in range(size):
-        print >> out_f,'printf(\"%d \");'%count
-        print "Code Generation Progress: %4.1f %% \r"%(count * (100.0 / (size + 1))),
-        for symbol in symbol_table.symbols:
-            summary_index = dump((symbol,count))
-            try:
-                prob_dict = summary[summary_index]
-            except:
-                prob_dict = dict()
-            print >> out_f,'printf(\"%0.18G','\",%s);'%(symbol_table.probability_dict_to_c_string(prob_dict))
+    for x in range(size):
+#        print >> out_f,'printf(\"%d \");'%x
+        for y in range(len(symbol_table.symbols)):
+            print >> out_f,'printf(\"%0.18G \",',
+            print >> out_f,'table[%d][%d]);'%(x,y)
         print >> out_f,'printf(\"\\n\");'
+    print >> out_f,'free(rules);'
+    print >> out_f,'free(probs);'
     print >> out_f,'return 0; }'
     out_f.close()
-    print "Code Generation Progress: %4.1f %% \r"%(100.0),
 
-def expand_state(state_node,base_prob_dict,gen_shelf):
-    state_shelf = dict()
-    stack = deque()
-    stack.append(state_node)
+    ## Unreduced Main
+    out_f = open(filename + '_unreduced.c','w')
+    print >> out_f,'#include <stdio.h>'
+    print >> out_f,'#include <stdlib.h>'
+    print >> out_f,'#include <malloc.h>'
+    print >> out_f
+    print >> out_f,'// Expressions that compute the probabilities'
+    for count in range(len(states)):
+        print >> out_f,'void expression_%d(double*,double*,double[][%d]);'%(count,len(symbol_table.symbols))
+    print >> out_f
+    print >> out_f,'// Precomputed terms for the probabilities'
+    for count in range((len(probabilities)/200)+1):
+        print >> out_f,'void terms_%d(double*,double*);'%(count)
 
-    while len(stack) > 0:
-        stack.pop().expand(stack,state_shelf)
+    print >> out_f,'int main(int argc, char* argv[]) {'
+    print >> out_f,'if (argc != %d) {'%(len(unique_symbols)+1)
+    print >> out_f,'printf(\"\\nUsage: %s',
+    for symbol in unique_symbols: print >> out_f,'%s'%(symbol),
+    print >> out_f,'\\n\\n\",argv[0]);'
+    print >> out_f,'return -1; }'
+    for x in range(len(unique_symbols)):
+        print >> out_f,'double %s = atof(argv[%d]);'%(unique_symbols[x],x+1)
+    print >> out_f,'int x,y;'
+    print >> out_f,'double result = 0.0;'
+    print >> out_f,'double table[%d][%d];'%(size,len(symbol_table.symbols))
+    print >> out_f,'for (x = 0; x < %d; x++) for (y = 0; y < %d; y++) table[x][y] = 0;'%(size,len(symbol_table.symbols))
+    print >> out_f,'double* rules = malloc(sizeof(double)*%d);'%(len(symbol_table.rules_probabilities))
+    print >> out_f,'double* probs = malloc(sizeof(double)*%d);'%(len(probabilities))
 
+    ## Pre-calculate those values
+    for x in range(len(symbol_table.rules_probabilities)):
+        print >> out_f,'rules[%d] = %s;'%(x,symbol_table.rules_probabilities[x]);
+    for x in range((len(probabilities)/200)+1):
+        print >> out_f,'terms_%d(rules,probs);'%(x)
+    for state,x in states.iteritems():
+        print >> out_f,'expression_%d(probs,&result,table);'%(x)
+        print >> out_f,'printf(\"%s :'%(symbol_table.state_to_string(load(state))),
+        print >> out_f,'%0.18G\\n\",result);'
+
+    print >> out_f,'free(rules);'
+    print >> out_f,'free(probs);'
+    print >> out_f,'return 0; }'
+    out_f.close()
+
+    ## Makefile
+    out_f = open('Makefile','a')
+    print >> out_f,filename,':','%s.o %s_expressions.a %s_terms.a'%(filename,filename,filename)
+    print >> out_f,'\tcc -lm -O3 -o %s'%(filename),'%s.o'%(filename),'%s_expressions.a'%(filename),'%s_terms.a'%(filename)
+    print >> out_f
+    print >> out_f,'%s_unreduced'%(filename),':','%s_unreduced.o %s_expressions.a %s_terms.a'%(filename,filename,filename)
+    print >> out_f,'\tcc -lm -O3 -o %s_unreduced'%(filename),'%s_unreduced.o'%(filename),'%s_expressions.a'%(filename),'%s_terms.a'%(filename)
+    print >> out_f
+    print >> out_f,'%s.o'%(filename),':','%s.c'%(filename)
+    print >> out_f,'\tcc -O3 -c -o %s.o'%(filename),'%s.c'%(filename)
+    print >> out_f
+    print >> out_f,'%s_unreduced.o'%(filename),':','%s_unreduced.c'%(filename)
+    print >> out_f,'\tcc -O3 -c -o %s_unreduced.o'%(filename),'%s_unreduced.c'%(filename)
+    print >> out_f
+    print >> out_f,'%s_expressions.a'%(filename),':',
+    for x in range(len(states)):
+        print >> out_f,'%s_expression_%d.o'%(filename,x),
+    print >> out_f
+    print >> out_f,'\tfind \. -name \'%s_expression_*.o\' | xargs ar cr %s_expressions.a'%(filename,filename)
+    print >> out_f
+    print >> out_f,'%s_terms.a'%(filename),':',
+    for x in range((len(probabilities)/200)+1):
+        print >> out_f,'%s_terms_%d.o'%(filename,x),
+    print >> out_f
+    print >> out_f,'\tfind \. -name \'%s_terms_*.o\' | xargs ar cr %s_terms.a'%(filename,filename)
+    print >> out_f
+    for x in range(len(states)):
+        print >> out_f,'%s_expression_%d.o'%(filename,x),':','%s_expression_%d.c'%(filename,x)
+        print >> out_f,'\tcc -O3 -c -o %s_expression_%d.o'%(filename,x),'%s_expression_%d.c'%(filename,x)
+    for x in range((len(probabilities)/200)+1):
+        print >> out_f,'%s_terms_%d.o'%(filename,x),':','%s_terms_%d.c'%(filename,x)
+        print >> out_f,'\tcc -O3 -c -o %s_terms_%d.o'%(filename,x),'%s_terms_%d.c'%(filename,x)
+    print >> out_f
+    print >> out_f
+    out_f.close()
+
+def expand_state(state,base_prob_dict,gen_shelf,expand_shelf,symbol_table):
+    state_node = Node(state,symbol_table)
+    for x in range(len(symbol_table.symbols)):
+        if len(symbol_table.rules_inv[x]) == 0:
+            state_node.state[x] += state_node.expandable[x]
+            state_node.expandable[x] = 0
+
+    if not expand_shelf.has_key(dump(state_node.expandable)):
+        stack = deque()
+        leaf_dict = defaultdict(zerodict)
+
+        stack.append(state_node)
+        while len(stack) > 0:
+            stack.pop().expand(stack,leaf_dict,expand_shelf)
+
+    if not expand_shelf.has_key(dump(state_node.expandable)):
+        subtree = defaultdict(zerodict)
+        for new_state,prob_dict in leaf_dict.iteritems():
+            new_state = load(new_state)
+            for x in range(len(new_state)):
+                new_state[x] -= state[x]
+            subtree[dump(new_state)] = prob_dict
+    else:
+        subtree = load(expand_shelf[dump(state_node.expandable)])
+    
     ## Filter results back to generation results by multiplication
-    for new_state,prob_dict in state_shelf.iteritems():
-        try:
-            result = gen_shelf[new_state]
-        except:
+    for state_offset,prob_dict in subtree.iteritems():
+        new_state = load(state_offset)
+        for x in range(len(new_state)):
+            new_state[x] += state[x]
+        if gen_shelf.has_key(dump(new_state)):
+            result = gen_shelf[dump(new_state)]
+        else:
             result = dict()
         multiply(base_prob_dict,prob_dict,result)
-        gen_shelf[new_state] = result
+        gen_shelf[dump(new_state)] = result
 
 ## Functions and data structures defined... let us begin.
 
 symbol_table = SymbolTable()
 
-## Root process
-if mpi_rank == 0:
+## Calculate default epsilon - to machine precision
+epsilon = 1
+while epsilon / 2.0  + 1.0 > 1.0:
+    epsilon = epsilon / 2.0
 
-    ## Calculate default epsilon - to machine precision
-    epsilon = 1
-    while epsilon / 2.0  + 1.0 > 1.0:
-        epsilon = epsilon / 2.0
+## Parse options
+try:
+    opts, args = getopt.getopt(sys.argv[1:],'e:',['simplify','epsilon='])
+except getopt.GetoptError:
+    usage()
 
-    ## Parse options
-    try:
-        opts, args = getopt.getopt(sys.argv[1:],'e:',['simplify','epsilon='])
-    except getopt.GetoptError:
-        usage()
+for opt,arg in opts:
+    if opt in ('-e','--epsilon'):
+        try:
+            new_epsilon = float(arg)
+        except:
+            sys.stderr.write('\nERROR! Provided epsilon not an real value: %s\n\n'%(arg))
+            rootexit()
+        if new_epsilon <= 0.0:
+            sys.stderr.write('\nERROR! Epsilon must be a positive value.\n\n')
+            rootexit()
+        elif new_epsilon < epsilon:
+            sys.stderr.write('\nWARNING! Provided epsilon is less than machine precision: %s\n\n'%(arg))
+        elif new_epsilon >= 1.0:
+            sys.stderr.write('\nERROR! Epsilon must be less than one.\n\n')
+            rootexit()
+        epsilon = new_epsilon
 
-    for opt,arg in opts:
-        if opt in ('-e','--epsilon'):
-            try:
-                new_epsilon = float(arg)
-            except:
-                sys.stderr.write('\nERROR! Provided epsilon not an real value: %s\n\n'%(arg))
-                rootexit()
-            if new_epsilon <= 0.0:
-                sys.stderr.write('\nERROR! Epsilon must be a positive value.\n\n')
-                rootexit()
-            elif new_epsilon < epsilon:
-                sys.stderr.write('\nWARNING! Provided epsilon is less than machine precision: %s\n\n'%(arg))
-            elif new_epsilon >= 1.0:
-                sys.stderr.write('\nERROR! Epsilon must be less than one.\n\n')
-                rootexit()
-            epsilon = new_epsilon
-                
-    ## Check for correct number of arguments
-    if len(args) != 3:
-        usage()
-        
-    number_of_generations = 0
-    rule_file = args[1]
-    init_file = args[2]
+## Check for correct number of arguments
+if len(args) != 3:
+    usage()
 
-    try :
-        number_of_generations = int(args[0])
-    except:
-        sys.stderr.write('\nERROR! Provided generations not an integer: %s\n\n'%(sys.argv[1]))
-        rootexit()
+number_of_generations = 0
+rule_file = args[1]
+init_file = args[2]
 
-    if number_of_generations <= 0:
-        sys.stderr.write('\nERROR! Number of generations must be greater than zero.\n\n')
-        rootexit()
+try :
+    number_of_generations = int(args[0])
+except:
+    sys.stderr.write('\nERROR! Provided generations not an integer: %s\n\n'%(sys.argv[1]))
+    rootexit()
 
-    if not os.path.isfile(rule_file):
-        sys.stderr.write('\nERROR! Rules file does not exist: %s\n\n'%(rule_file))
-        rootexit()
+if number_of_generations <= 0:
+    sys.stderr.write('\nERROR! Number of generations must be greater than zero.\n\n')
+    rootexit()
 
-    if not os.path.isfile(init_file):
-        sys.stderr.write('\nERROR! Initial state file does not exist: %s\n\n'%(init_file))
-        rootexit()
+if not os.path.isfile(rule_file):
+    sys.stderr.write('\nERROR! Rules file does not exist: %s\n\n'%(rule_file))
+    rootexit()
 
-    ## Minimal checking finished --- we are a go!
+if not os.path.isfile(init_file):
+    sys.stderr.write('\nERROR! Initial state file does not exist: %s\n\n'%(init_file))
+    rootexit()
 
-    ## Create stack
-    last_gen = shelve.open('.generation_%03d.%d'%(0,os.getpid()))
+## Minimal checking finished --- we are a go!
 
-    ## Read rules into symbol_table
-    if not symbol_table.read_rules(rule_file):
-        rootexit()
+## Create last generation shelf
+last_gen = shelve.open('.generation_%03d.%d'%(0,os.getpid()))
 
-    ## Read initial states
-    populate_shelf(last_gen,init_file,symbol_table)
+## Create state transition storage shelf
+expand_shelf = shelve.open('.expand.%d'%(os.getpid()))
 
-    if len(last_gen) <= 0:
-        sys.stderr.write('\nERROR! Initial state file has no data: %s\n\n'%(init_file))
-        rootexit()
+## Read rules into symbol_table
+if not symbol_table.read_rules(rule_file):
+    rootexit()
 
-    ## Extra line
+## Read initial states
+populate_shelf(last_gen,init_file,symbol_table)
+
+## Print rules code
+print_rules_code(symbol_table)
+
+## Start new Makefile
+f = open('Makefile','w')
+print >> f,'all : rule_probabilities',
+for x in range(1,number_of_generations+1):
+    print >> f,'generation_%03d_summary generation_%03d_summary_unreduced'%(x,x),
+print >> f
+print >> f
+print >> f,'clean :'
+for x in range(1,number_of_generations+1):
+    print >> f,'\tfind \. -name \'generation_%03d_summary_expression_*.o\' | xargs rm'%(x)
+    print >> f,'\tfind \. -name \'generation_%03d_summary_terms_*.o\' | xargs rm'%(x)
+    print >> f,'\trm',
+    print >> f,'generation_%03d_summary.o generation_%03d_summary_unreduced.o generation_%03d_summary_expressions.a generation_%03d_summary_terms.a'%(x,x,x,x)
+print >> f
+print >> f,'rule_probabilities : rule_probabilities.c'
+print >> f,'\tcc -O3 -o rule_probabilities rule_probabilities.c'
+print >> f
+print >> f
+f.close()
+
+
+if len(last_gen) <= 0:
+    sys.stderr.write('\nERROR! Initial state file has no data: %s\n\n'%(init_file))
+    rootexit()
+
+## Extra line
+print
+
+init_time = time.time()
+## Perform expansion
+for n in range(1,number_of_generations+1):
+    print 'Processing Generation',n
     print
 
-    ## Good to go.. broadcast the symbol table!
-    if use_mpi:
-        st = symbol_table.pack()
-        st = comm.bcast(st,root=0)
+    gen_shelf = shelve.open('.generation_%03d.%d'%(n,os.getpid()))
 
-    init_time = time.time()
-    ## Perform expansion
-    for n in range(1,number_of_generations+1):
-        print 'Processing Generation',n
-        print
+    ## Drop garbage before this generation
+    gc.collect()
 
-        gen_shelf = shelve.open('.generation_%03d.%d'%(n,os.getpid()))
+    gen_start = time.time()
 
-        ## Drop garbage before this generation
+    ## Read previous state file (or initial state file provided) and
+    ## fill the stack with the states one at a time (expanding into
+    ## temporary file.)
+    event_start = time.time()
+
+    ## Send out work
+    gen_size = len(last_gen) + 1
+    gen_count = 1
+    for state,base_prob_dict in last_gen.iteritems():
+
         gc.collect()
 
-        gen_start = time.time()
+        print 'Expansion Progress: %4.1f %% \r'%(gen_count * (100.0 / gen_size)),
+        sys.stdout.flush()
 
-        ## Read previous state file (or initial state file provided) and
-        ## fill the stack with the states one at a time (expanding into
-        ## temporary file.)
-        event_start = time.time()
+        expand_state(load(state),base_prob_dict,gen_shelf,expand_shelf,symbol_table)
 
-        ## Send out work
-        gen_size = len(last_gen) + 1
-        gen_count = 1
-        procs = set(range(1,mpi_size))
-        working = set()
-        for state,base_prob_dict in last_gen.iteritems():
+        gen_count += 1
 
-            gc.collect()
+    print 'Expansion Progress: %4.1f %% \r'%(100.0)
 
-            print 'Expansion Progress: %4.1f %% \r'%(gen_count * (100.0 / gen_size)),
-            sys.stdout.flush()
+    event_end = time.time()
+    print 'Time elapsed:',(event_end - event_start)
 
-            if use_mpi:
-                dest = comm.recv(source=MPI.ANY_SOURCE,tag=1)
-                comm.send('EXPAND',dest=dest,tag=2)
-                comm.send(state,dest=dest,tag=3)
-                comm.send(base_prob_dict,dest=dest,tag=4)
+    print 'Post-processing state information...'
+    event_start = time.time()
 
-                working = working.union([dest])
-            else:
-                state = Node(load(state),symbol_table)
-                expand_state(state,base_prob_dict,gen_shelf)
-                
-            gen_count += 1
+    ## Catalog the current generation
+    print_states(gen_shelf,symbol_table,'generation_%03d.txt'%(n))
 
-        print 'Expansion Progress: %4.1f %% \r'%(100.0)
+    event_end = time.time()
+    print
+    print 'Time elapsed:',(event_end - event_start)
+    print 'Generating C code...'
+    event_start = time.time()
 
-        if use_mpi:
-            gen_shelf.close()
-            sleeping = set()
-            gen_size = mpi_size + 1
-            gen_count = 1
-            ## Gather all results
-            while len(working) > 0:
+    ## Create summary table
+    max_count = 0
+    probabilities = shelve.open('.probabilities_%03d.%d'%(n,os.getpid()))
+    states = shelve.open('.states_%03d.%d'%(n,os.getpid()))
+    temp_count = 0
+    for state in gen_shelf.iterkeys():
+        states[state] = temp_count
+        temp_count += 1
+    temp_count = 0
+    for state in states.iterkeys():
+        for prob in gen_shelf[state].iterkeys():
+            if not probabilities.has_key(prob):
+                probabilities[prob] = temp_count
+                temp_count += 1
+        state = load(state)
+        if max(state) > max_count:
+            max_count = max(state)
+    max_count += 1
 
-                gc.collect()
+    print_c_code(states,
+                 probabilities,
+                 max_count,
+                 symbol_table,
+                 gen_shelf,
+                 'generation_%03d_summary'%(n))
 
-                print 'Gather Progress: %4.1f %% \r'%(gen_count * (100.0 / gen_size)),
+    event_end = time.time()
+    gen_end = time.time()
+    print 'Time elapsed:',(event_end - event_start)
+    print 'Time for this generation:',(gen_end - gen_start)
+    print
 
-                while 1:
-                    dest = comm.recv(source=MPI.ANY_SOURCE,tag=1)
-                    if dest in working:
-                        break
-                    comm.send('WAIT',dest=dest,tag=2)
-                    sleeping = sleeping.union([dest])
-
-                comm.send('COMBINE',dest=dest,tag=2)
-                comm.send('.generation_%03d.%d'%(n,os.getpid()),dest=dest,tag=3)
-                comm.recv(source=dest,tag=4)
-
-                working.remove(dest)
-
-                gen_count += 1
-
-            for x in sleeping:
-                comm.send('WAKEUP',dest=x,tag=3)
-                
-            gen_shelf = shelve.open('.generation_%03d.%d'%(n,os.getpid()))
-
-            print 'Gather Progress: %4.1f %% \r'%(100.0)
-
-        event_end = time.time()
-        print 'Time elapsed:',(event_end - event_start)
-
-        print 'Post-processing state information...'
-        event_start = time.time()
-
-        ## Catalog the current generation
-        print_states(gen_shelf,symbol_table,'generation_%03d.txt'%(n))
-
-        event_end = time.time()
-        print
-        print 'Time elapsed:',(event_end - event_start)
-        print 'Processing summary information...'
-        event_start = time.time()
-
-        ## Create summary table
-        summary = shelve.open('.summary_%03d.%d'%(n,os.getpid()))
-        sum_size = make_summary(summary,gen_shelf,symbol_table)
-        print
-
-        print_summary(summary,
-                      sum_size,
-                      symbol_table,'generation_%03d_summary.txt'%(n))
-        print
-
-        print_c_code(summary,
-                     sum_size,
-                     symbol_table,'generation_%03d_summary.c'%(n))        
-        print
-
-        summary.close()
-        for filename in glob.glob('.summary_%03d.%d*'%(n,os.getpid())):
-            os.remove(filename)
-
-        event_end = time.time()
-        gen_end = time.time()
-        print 'Time elapsed:',(event_end - event_start)
-        print 'Time for this generation:',(gen_end - gen_start)
-        print
-
-        ## Promote to next generation
-        last_gen.close()
-        for filename in glob.glob('.generation_%03d.%d*'%(n-1,os.getpid())):
-            os.remove(filename)
-        last_gen = gen_shelf
-
-    end_time = time.time()
-    print 'Total elapsed time:',(end_time - init_time)
-
-    ## Finalize results
+    ## Promote to next generation
     last_gen.close()
-    for filename in glob.glob('.generation_%03d.%d*'%(number_of_generations,os.getpid())):
+    probabilities.close()
+    states.close()
+    for filename in glob.glob('.generation_%03d.%d*'%(n-1,os.getpid())):
         os.remove(filename)
+    for filename in glob.glob('.probabilities_%03d.%d*'%(n,os.getpid())):
+        os.remove(filename)
+    for filename in glob.glob('.states_%03d.%d*'%(n,os.getpid())):
+        os.remove(filename)
+    last_gen = gen_shelf
 
-    f = open('Makefile','w')
-    print >> f,'all:',
-    for n in range(1,number_of_generations+1):
-        print >> f,'generation_%03d_summary'%(n),
-    print >> f
-    print >> f
-    for n in range(1,number_of_generations+1):
-        print >> f,'generation_%03d_summary: generation_%03d_summary.c'%(n,n)
-        print >> f,'\tcc -o generation_%03d_summary generation_%03d_summary.c -lm'%(n,n)
-    f.close()
+end_time = time.time()
+print 'Total elapsed time:',(end_time - init_time)
 
-    if use_mpi:
-        for proc in procs:
-            comm.send('EXIT',dest=proc,tag=2)
-
-## Worker process
-else:
-    st = None
-    st = comm.bcast(st,root=0)
-
-    if not st:
-        sys.exit()
-
-    symbol_table.unpack(st)
-
-    ## Make a stack and a generation shelf
-    stack = deque()
-#    gen_shelf = dict()
-    gen_shelf = shelve.open('.build_tree_worker.%d'%(os.getpid()))
-
-    while 1:
-        ## Clean up
-        gc.collect()
-
-        ## Send info on readiness
-        comm.send(mpi_rank,dest=0,tag=1)
-
-        ## Grab a message
-        message = comm.recv(source=0,tag=2)
-
-        if message == 'EXPAND':
-            state = comm.recv(source=0,tag=3)
-            base_prob_dict = comm.recv(source=0,tag=4)
-            state = Node(load(state),symbol_table)
-            expand_state(state,base_prob_dict,gen_shelf)
-            del state
-            del base_prob_dict
-        elif message == 'COMBINE':
-            filename = comm.recv(source=0,tag=3)
-            root_shelf = shelve.open(filename)
-            add_shelf_shelf(root_shelf,gen_shelf)
-            root_shelf.close()
-#            del gen_shelf
-#            gen_shelf = dict()
-            gen_shelf.close()
-            comm.send("DONE",dest=0,tag=4)
-            for filename in glob.glob('.build_tree_worker.%d*'%(os.getpid())):
-                os.remove(filename)
-            gen_shelf = shelve.open('.build_tree_worker.%d'%(os.getpid()))
-        elif message == 'WAIT':
-            message = comm.recv(source=0,tag=3)
-        elif message == 'EXIT':
-            gen_shelf.close()
-            for filename in glob.glob('.build_tree_worker.%d*'%(os.getpid())):
-                os.remove(filename)
-            break
-
+## Finalize results
+last_gen.close()
+expand_shelf.close()
+for filename in glob.glob('.generation_%03d.%d*'%(number_of_generations,os.getpid())):
+    os.remove(filename)
+for filename in glob.glob('.expand.%d*'%(os.getpid())):
+    os.remove(filename)
