@@ -203,10 +203,10 @@ sense for the model you have built.
 
 $ ./generation_001_summary 0.3
 
-S D
-0.699999999999999956 0.299999999999999989
-0 0.699999999999999956
-0.299999999999999989 0
+S D  
+0.699999999999999956 0.299999999999999989  
+0 0.699999999999999956  
+0.299999999999999989 0  
 
 This reports the proportion (probability) of all cell types given all possible
 outcomes of the model in summary form. For example, starting with a single S, we
