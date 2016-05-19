@@ -123,8 +123,8 @@ assumed by the D state (D D : 1), but this is what we wanted so this is OK. Howe
 you specific P1+P2 > 1 in your final fitting, then the model breaks and the code will
 provide -no warnings- about this. Instead, we say it here: you have been warned!
 
-2. You will need an initially assumed population for your model. Examples of this are
-   found in the files till_states.txt and tcell_states.txt.
+* You will need an initially assumed population for your model. Examples of this are
+  found in the files till_states.txt and tcell_states.txt.
 
 The example file till_states.txt only contains the following information:
 
@@ -144,14 +144,14 @@ This would assume your model will start with a population of 3 live cells and
 than including dead cells in the initial generation, but you can essentially set
 this to whatever you like.
 
-3. You will need to specifiy the number of generations you are assuming will match
-   well with you experimental data. Note that the algorithms are exponential in
-   the number of generations, so asking for too many will result in an expensive
-   final tree compilation (the actual code generation is not too slow, but the
-   compilation step described below -is-). Generally speaking then, if 7 generations
-   is the maximum number of generations you will be considering, it is trivial to
-   generate the trees and code for generations 2-6. Let's just start with 3 generations
-   to make it fast:
+* You will need to specifiy the number of generations you are assuming will match
+  well with you experimental data. Note that the algorithms are exponential in
+  the number of generations, so asking for too many will result in an expensive
+  final tree compilation (the actual code generation is not too slow, but the
+  compilation step described below -is-). Generally speaking then, if 7 generations
+  is the maximum number of generations you will be considering, it is trivial to
+  generate the trees and code for generations 2-6. Let's just start with 3 generations
+  to make it fast:
 
 ```
 $ mkdir tmp
@@ -166,8 +166,8 @@ then the above commands will generate the C-code needed to instantiate 3 generat
 of the Till Model. However, you still need to build the C-code now in order to
 start fitting the probabilities in the model.
 
-4. Utilize the generated Makefile to compile the C-code for the 3-generation Till
-   Model tree from the last step:
+* Utilize the generated Makefile to compile the C-code for the 3-generation Till
+  Model tree from the last step:
 
 ```
 $ make -j N
@@ -183,9 +183,9 @@ complicated quite quickly, but experiments on cell lines are unlikely to be very
 as well since the cell type counts need to be obtained and are typically exponentially
 growing as well. That's just life with cellular proliferation. :)
 
-5. Finally, after you have build the generated C-code, you will see that several binaries
-   have been created to help with parameter fitting: rule_probabilities,
-   generation_XXX_summary, and generation_XXX_summary_unreduced
+* Finally, after you have build the generated C-code, you will see that several binaries
+  have been created to help with parameter fitting: rule_probabilities,
+  generation_XXX_summary, and generation_XXX_summary_unreduced
 
 Each of these codes can help you fit the model to data, and each takes the same number
 of arguments equivalent to the number of free parameters in your model. You can run
