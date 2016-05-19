@@ -60,18 +60,19 @@ such, a few prerequisites are required to run the code.
    Some examples are provided in the files till_rules.txt and tcell_rules.txt.
 
 Here is the till_rules.txt example:
-
+```
 S D : 1 - P1
-
-3\*S : P1
+3*S : P1
+```
 
 Each line contains one rule, so there are two rules in this model. The symbols
 on the left side of the colon (:) on each line indicate the possible states of
 the model (in this case, S and D). The symbols to the right of the colon describe
 the probability with which the rule occurs in mathematical terms. Let's take a
 closer look at the first line:
-
+```
 S D : 1 - P1
+```
 
 This rule indicates that a of cell type, S, will transition to a cell type of D,
 with a probability of 1 - P1, where P1 is a free parameter in range [0-1]. In this
@@ -79,8 +80,9 @@ model, the S cell type is a living cell, and the D cell type is a dead cell. Hen
 at each generation, the model assumes that cells die with probability 1 - P1.
 
 Now let's look at the second rule:
-
-3\*S : P1
+```
+3*S : P1
+```
 
 The 3\*S on the left side is a short-hand for three S symbols in a row (i.e. S S S).
 Therefore, the rule is describing the situation in which a cell matching the left-most
@@ -90,7 +92,9 @@ probability P1 (same free parameter as above).
 
 You could also write this same rule in a different way:
 
+```
 S S S : P1
+```
 
 The code doesn't care whether you use the shorthand notation or not. What does matter
 is that the left-most symbol is the "matching" part of the rule. Only a cell in the
@@ -104,9 +108,10 @@ that you can use more complex strings, so long as they qualify as sympy variable
 However, you must ensure that the probabilities in your model are consistent. Take a look
 at these two rules:
 
+```
 S S S : P1
-
 S D : P2
+```
 
 These look very similar to the model above, but the use of -two- free parameters in the
 model may lead to problems down the road. For example, once the model trees are built
@@ -123,12 +128,16 @@ provide -no warnings- about this. Instead, we say it here: you have been warned!
 
 The example file till_states.txt only contains the following information:
 
+```
 S
+```
 
 This means that we start with a single live cell. However, you may want more
 complicated starting configurations. One example would be:
 
+```
 3\*S 4\*D
+```
 
 This would assume your model will start with a population of 3 live cells and
 4 dead cells. Of course, having more cell states for living cells makes more sense
@@ -144,11 +153,13 @@ this to whatever you like.
    generate the trees and code for generations 2-6. Let's just start with 3 generations
    to make it fast:
 
+```
 $ mkdir tmp
 
 $ cd tmp
 
 $ ../build_tree.py 3 ../till_rules.txt ../till_states.txt
+```
 
 Assuming you started from the cell-differentiation directory which contains the code,
 then the above commands will generate the C-code needed to instantiate 3 generations
@@ -158,7 +169,9 @@ start fitting the probabilities in the model.
 4. Utilize the generated Makefile to compile the C-code for the 3-generation Till
    Model tree from the last step:
 
+```
 $ make -j N
+```
 
 Be careful to set N here to the number of cores on your machine. For large models with
 many rules, or for many generations, the code compilation can take a significant
@@ -180,17 +193,15 @@ any of them without arguments, and they will report the order they are expecting
 these arguments. Plugging in a probability will generate an appropriate report. For
 example:
 
+```
 $ ./rule_probabilities 0.3
 
 Symbol  Rule    Probability
-
 S       D       0.699999999999999956
-
-S       2\*S     0.299999999999999989
-
+S       2*S     0.299999999999999989
 S       S       0
-
 D       D       1
+```
 
 This reports all of the rules from your rules file, and the additional implicit rules
 (if they were not defined explicitly in your rules file). Also, it reports what the
