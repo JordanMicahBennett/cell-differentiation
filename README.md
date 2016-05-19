@@ -60,7 +60,9 @@ such, a few prerequisites are required to run the code.
    Some examples are provided in the files till_rules.txt and tcell_rules.txt.
 
 Here is the till_rules.txt example:
+
 S D : 1 - P1
+
 3\*S : P1
 
 Each line contains one rule, so there are two rules in this model. The symbols
@@ -68,6 +70,7 @@ on the left side of the colon (:) on each line indicate the possible states of
 the model (in this case, S and D). The symbols to the right of the colon describe
 the probability with which the rule occurs in mathematical terms. Let's take a
 closer look at the first line:
+
 S D : 1 - P1
 
 This rule indicates that a of cell type, S, will transition to a cell type of D,
@@ -76,6 +79,7 @@ model, the S cell type is a living cell, and the D cell type is a dead cell. Hen
 at each generation, the model assumes that cells die with probability 1 - P1.
 
 Now let's look at the second rule:
+
 3\*S : P1
 
 The 3\*S on the left side is a short-hand for three S symbols in a row (i.e. S S S).
@@ -85,6 +89,7 @@ this model, the S cell type (a living cell) will divide into two living cells wi
 probability P1 (same free parameter as above).
 
 You could also write this same rule in a different way:
+
 S S S : P1
 
 The code doesn't care whether you use the shorthand notation or not. What does matter
@@ -98,7 +103,9 @@ that you can use more complex strings, so long as they qualify as sympy variable
 
 However, you must ensure that the probabilities in your model are consistent. Take a look
 at these two rules:
+
 S S S : P1
+
 S D : P2
 
 These look very similar to the model above, but the use of -two- free parameters in the
@@ -115,10 +122,12 @@ provide -no warnings- about this. Instead, we say it here: you have been warned!
    found in the files till_states.txt and tcell_states.txt.
 
 The example file till_states.txt only contains the following information:
+
 S
 
 This means that we start with a single live cell. However, you may want more
 complicated starting configurations. One example would be:
+
 3\*S 4\*D
 
 This would assume your model will start with a population of 3 live cells and
@@ -136,7 +145,9 @@ this to whatever you like.
    to make it fast:
 
 $ mkdir tmp
+
 $ cd tmp
+
 $ ../build_tree.py 3 ../till_rules.txt ../till_states.txt
 
 Assuming you started from the cell-differentiation directory which contains the code,
@@ -170,10 +181,15 @@ these arguments. Plugging in a probability will generate an appropriate report. 
 example:
 
 $ ./rule_probabilities 0.3
+
 Symbol  Rule    Probability
+
 S       D       0.699999999999999956
+
 S       2\*S     0.299999999999999989
+
 S       S       0
+
 D       D       1
 
 This reports all of the rules from your rules file, and the additional implicit rules
@@ -186,9 +202,13 @@ back and rethink your model -OR- make sure you are using parameter values that m
 sense for the model you have built.
 
 $ ./generation_001_summary 0.3
+
 S D
+
 0.699999999999999956 0.299999999999999989
+
 0 0.699999999999999956
+
 0.299999999999999989 0
 
 This reports the proportion (probability) of all cell types given all possible
