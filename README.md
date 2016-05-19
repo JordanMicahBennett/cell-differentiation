@@ -51,4 +51,15 @@ PNAS 51:29-36 (1964)]
 Basic Documentation
 *******************
 
-TODO
+The code is designed to aid parameter estimation when fitting cell
+differentiation models to experimental cell differentiation data. As
+such, a few prerequisites are required to run the code.
+
+The code is designed to aid parameter estimation when fitting cell
+differentiation models to experimental cell differentiation data. As
+such, a few prerequisites are required to run the code.
+
+1. You will need a set of rules describing all of the possible cell
+   differentiation events during each cell generation. Some examples
+   are provided in the files <till_rules.txt> and <tcell_rules.txt>
+
