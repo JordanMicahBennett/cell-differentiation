@@ -21,7 +21,7 @@
 ## If you want to redistribute modifications, please consider that
 ## derived work must not be called official Cell-Diff. Details are found
 ## in the README & LICENSE files - if they are missing, get the
-## official version at github.com/douradopalmares/mdsctk/.
+## official version at github.com/douradopalmares/cell-differentiation/.
 ## 
 ## To help us fund Cell-Diff development, we humbly ask that you cite
 ## the poster on the package - you can find them in the top README file.
