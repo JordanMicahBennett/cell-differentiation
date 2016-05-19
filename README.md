@@ -176,7 +176,7 @@ $ make -j N
 Be careful to set N here to the number of cores on your machine. For large models with
 many rules, or for many generations, the code compilation can take a significant
 amount of time (much longer than it took to generate the code) so be prepared to wait
-awhile to see everything come together in this cases. To get a sense of how bad things
+awhile to see everything comes together in these cases. To get a sense of how bad things
 can get, try running for 8 generations instead of the 3 specified above and remember
 that generation 9 will take exponentially more time than 8. Even simple models can get
 complicated quite quickly, but experiments on cell lines are unlikely to be very long
@@ -213,6 +213,41 @@ back and rethink your model -OR- make sure you are using parameter values that m
 sense for the model you have built.
 
 ```
+$ ./generation_001_summary_unreduced 0.3
+
+2*S : 0.299999999999999989
+D : 0.699999999999999956
+```
+
+This reports all of the probabilities for all of the resulting outcomes of
+the model. For example, in the Till Model for 1 generation (note the 001 in
+the binary above), the initial S could potentially match the first rule and
+produce a D (dead) cell or the second rule and produce two S (live) cells.
+Each of these two outcomes has a certain probability of happening, which is
+reported on the corresponding line. Note that this makes perfect sense because
+we have set P1=0.3, and this is the probability of the second rule firing to
+produce 2 S cells, and the reported probability is 0.3 (within roundoff error).
+However, the probability of having a D cell is 1-P1=0.7, which is again what
+is expected.
+
+Things get more interesting for more generations:
+
+```
+$ ./generation_002_summary_unreduced 0.3
+
+2*D : 0.146999999999999964
+4*S : 0.0269999999999999962
+D : 0.699999999999999956
+2*S D : 0.126000000000000001
+```
+Here there is the possibility of seeing one of four possible outcimes, but the
+probabilities in the last column will sum to 1. In other words, the code will
+count the -total- probability for a particular cell count outcome. Even if the
+outcome occurs multiple times (for example, via the application of a different
+set of rules up to the current generation) they will be folded into the
+final probabilities.
+
+```
 $ ./generation_001_summary 0.3
 
 S D
@@ -221,8 +256,41 @@ S D
 0.299999999999999989 0
 ```
 
-This reports the proportion (probability) of all cell types given all possible
-outcomes of the model in summary form. For example, starting with a single S, we
-can see that one possible outcome is that 
+This reports the proportion or marginal probabilities of each cell type under all
+possible outcomes of the model in summary form. For example, in the Till Model for 1
+generation (note the 001 binary above), the initial S could potentially divide
+to make 2 live (S) cells, or die to produce 1 dead (D) cell. In the summary above,
+each row corresponds to a count of the number of observed types. For instance,
+the first row (0.7 0.3) shows the probability of observing 0 S cells and 0 D cells,
+respectively. Since there is a 0.7 probability of seeing the initial cell die, it
+makes sense that there is a 0.7 probability of observing 0 S cells, and likewise a
+0.3 probability of observing 0 D cells since the cell had a 0.7 probability of
+dividing. However, the second row corresponds to the probability of observing 1 S
+cell and 1 D cell. Note that the initial cell must either divide in two or die, and
+hence there is no way to observe just 1 S cell after a single generation of the model.
+Therefore, the probability of observing 1 S cell is 0. On the other hand, there is a
+0.7 probability that the first cell died, and hence a 0.7 probability of observing
+1 D cell. Finally, the third row corresponds to the probabilities of observing
+2 S or 2 D cells. Since there was a 0.3 probability of diving, there is a 0.3
+probability of observing 2 S cells. However, given that we only started with a
+single S cell, even if it dies with probability 0.7, we would at most have only
+1 D cell, so the probability of observing 2 D cells is 0.
 
+* Now you would need to use some additional codes to search the parameters in your
+  model for a good fit to some experimental data. For example, running an
+  experiment starting from a single cell and counting the number of cells that
+  remained after a certain amount of time (assuming this was, on average say,
+  7 generations), and then performed this many, many times. One could use any
+  optimization technique to obtain the best fits for the model to the distribution
+  of cell counts observed across your experiments (fitting the S column primarily
+  since it may not be possible to count dead cells, but counting dead cells would
+  be appropriate as well and better for fitting).
 
+The advantage of this approach is that some of the cell count outcomes have a very
+low probability of being observed, but create a rather large "tail" and skew in the
+distribution which is hard to observe from Monte Carlo simulations. The approach
+above provides an analytically correct solution (to machine precision anyway) to
+the full cell count distribution. The tradeoff is the large computational time
+needed to fully characterize the model at large numbers of generations (or even
+small numbers of generations for very complex models). Pick your poison, and happy
+hacking!
