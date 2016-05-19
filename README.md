@@ -173,15 +173,15 @@ start fitting the probabilities in the model.
 $ make -j N
 ```
 
-Be careful to set N here to the number of cores on your machine. For large models with
-many rules, or for many generations, the code compilation can take a significant
-amount of time (much longer than it took to generate the code) so be prepared to wait
-awhile to see everything come together in this cases. To get a sense of how bad things
-can get, try running for 8 generations instead of the 3 specified above and remember
-that generation 9 will take exponentially more time than 8. Even simple models can get
-complicated quite quickly, but experiments on cell lines are unlikely to be very long
-as well since the cell type counts need to be obtained and are typically exponentially
-growing as well. That's just life with cellular proliferation. :)
+   Be careful to set N here to the number of cores on your machine. For large models with
+   many rules, or for many generations, the code compilation can take a significant
+   amount of time (much longer than it took to generate the code) so be prepared to wait
+   awhile to see everything come together in this cases. To get a sense of how bad things
+   can get, try running for 8 generations instead of the 3 specified above and remember
+   that generation 9 will take exponentially more time than 8. Even simple models can get
+   complicated quite quickly, but experiments on cell lines are unlikely to be very long
+   as well since the cell type counts need to be obtained and are typically exponentially
+   growing as well. That's just life with cellular proliferation. :)
 
 5. Finally, after you have build the generated C-code, you will see that several binaries
    have been created to help with parameter fitting: rule_probabilities,
