@@ -5,7 +5,7 @@
 ## 
 ##                          Cell-Diff
 ## 
-##       Exact computation of stochastic stem cell models
+##   Exact computation of cell proliferation model distributions
 ## 
 ##                        VERSION 1.0.0
 ## Written by Joshua L. Phillips.
