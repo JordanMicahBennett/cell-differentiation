@@ -276,7 +276,7 @@ probability of observing 2 S cells. However, given that we only started with a
 single S cell, even if it dies with probability 0.7, we would at most have only
 1 D cell, so the probability of observing 2 D cells is 0.
 
-* Now you would need to use some additional codes to search the parameters in your
+* Now you would need to write some additional codes to search the parameters in your
   model for a good fit to some experimental data. For example, running an
   experiment starting from a single cell and counting the number of cells that
   remained after a certain amount of time (assuming this was, on average say,
